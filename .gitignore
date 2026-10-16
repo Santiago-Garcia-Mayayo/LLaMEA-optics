@@ -1,0 +1,6 @@
+*.so
+*.dll
+__pycache__/
+.venv/
+*.npz
+.pytest_cache/
