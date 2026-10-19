@@ -93,13 +93,14 @@ def _save_trace(trace_dir, res, h):
 
 def run_job(algorithm: str, problem_id: str, arm: str, seeds, *, class_name: str | None = None,
             budget: int | None = None, time_limit: float | None = None, init_kwargs: dict | None = None,
-            trace_dir: str | None = None) -> list[RunResult]:
-    """Run `algorithm` on one problem for every seed, in a fresh, isolated Python process."""
+            trace_dir: str | None = None, phase: str = "train") -> list[RunResult]:
+    """Run `algorithm` on one problem for every seed, in a fresh, isolated Python process.
+    Unless given, the budget is config.budget_for(problem, phase) (phase "train" or "test")."""
     from problems import get_problem
     seeds = [int(s) for s in seeds]
     if budget is None or time_limit is None:
         p = get_problem(problem_id) if not problem_id.startswith("lens/") else _LensStub(problem_id)
-        budget = budget or config.budget_for(p)
+        budget = budget or config.budget_for(p, phase)
         time_limit = time_limit or config.time_limit_for(p, budget)
     job = dict(algorithm=algorithm, class_name=class_name, problem=problem_id, arm=arm, seeds=seeds,
                budget=int(budget), time_limit=float(time_limit), init_kwargs=init_kwargs,

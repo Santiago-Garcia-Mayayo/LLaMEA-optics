@@ -180,8 +180,12 @@ class Harness:
         F = np.empty(n_ok)
         G = np.empty((n_ok, self.problem.n_constraints))
         P = np.empty(n_ok)
+        if n_ok > 1 and getattr(self.problem, "batch_ok", False):
+            evs = self.problem.evaluate_batch(X[:n_ok])     # vectorised (GPU), same values
+        else:
+            evs = None
         for j in range(n_ok):
-            ev = _sanitise(self.problem.evaluate(X[j]))
+            ev = _sanitise(evs[j] if evs is not None else self.problem.evaluate(X[j]))
             self.n_evals += 1
             self._record(X[j], ev)
             # violations below the feasibility tolerance are returned as exactly 0, so that

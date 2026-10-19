@@ -12,8 +12,8 @@ SMALL = ("toy/basic", "cec/RC15")
 
 @pytest.fixture
 def small_budgets(monkeypatch):
-    monkeypatch.setattr(config, "CEC_BUDGET_PER_DIM", 40)
-    monkeypatch.setattr(config, "LENS_BUDGET", 40)
+    monkeypatch.setattr(config, "CEC_BUDGET_PER_DIM", {"train": 40, "test": 40})
+    monkeypatch.setattr(config, "LENS_BUDGET", {"train": 40, "test": 40})
     monkeypatch.setattr(config, "TIME_MIN", 30.0)
 
 

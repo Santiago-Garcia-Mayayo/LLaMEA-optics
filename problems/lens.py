@@ -114,6 +114,7 @@ class LensProblem:
         self.lb, self.ub = lb, ub
         self._dist_opt_idx = np.asarray(f.distances_optimized_idx)
         self._eval = jax.jit(self._raw_jax)
+        self._eval_batch = jax.jit(jax.vmap(self._raw_jax))
         self.n_rays = self._count_rays()
         self.scales = self._load_scales()
 
@@ -197,6 +198,37 @@ class LensProblem:
         g_fwd = [max(0.0, s.fwd_min - e["fwd"])]
         g_effl = [max(0.0, abs(e["effl"] - s.effl_target) - (s.effl_tol or 0.0))]
         return np.array(g_rays + g_ct + g_ed + g_fwd + g_effl, float)
+
+    MAX_CHUNK = 256
+
+    def evaluate_batch(self, Theta) -> list:
+        """Vectorised evaluate(): one jax.vmap call per chunk. Chunks are padded to a power of
+        two (repeating the last row) so that only log2(MAX_CHUNK)+1 batch shapes are ever
+        compiled; padded rows are discarded."""
+        T = np.array([self.seal(t) for t in np.atleast_2d(Theta)])
+        out = []
+        for start in range(0, len(T), self.MAX_CHUNK):
+            chunk = T[start:start + self.MAX_CHUNK]
+            n = len(chunk)
+            size = 1 << (n - 1).bit_length()
+            padded = np.vstack([chunk, np.repeat(chunk[-1:], size - n, axis=0)]) if size > n else chunk
+            comps, edge, centre, fwd, effl = (np.asarray(a) for a in self._eval_batch(
+                jnp.asarray(padded[:, : self.nx]), jnp.asarray(padded[:, self.nx:])))
+            for j in range(n):
+                out.append({
+                    "theta": chunk[j], "rms2": float(comps[j, 0]), "n_dropped": float(comps[j, 1] / 10.0),
+                    "lensgopt_terms": comps[j], "edge": edge[j], "centre": centre[j],
+                    "fwd": float(fwd[j]), "effl": float(effl[j]),
+                })
+        return out
+
+    def evaluate_all_batch(self, Theta):
+        """Vectorised evaluate_all(): list of (f, v, penalty)."""
+        res = []
+        for e in self.evaluate_batch(Theta):
+            f = np.inf if e["n_dropped"] > 0 else e["rms2"]
+            res.append((f, self.violations(e), self.penalty_from(e)))
+        return res
 
     def violations(self, e: dict) -> np.ndarray:
         """Normalised violations: raw / s_j, s_j = median positive raw violation of constraint j

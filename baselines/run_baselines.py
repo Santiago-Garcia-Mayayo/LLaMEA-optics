@@ -36,7 +36,7 @@ def _done(path):
     return seen
 
 
-def run(baselines, problems, seeds, out, workers, trace=False):
+def run(baselines, problems, seeds, out, workers, trace=False, phase="test"):
     os.makedirs(out, exist_ok=True)
     path = os.path.join(out, "runs.jsonl")
     seen = _done(path)
@@ -50,7 +50,7 @@ def run(baselines, problems, seeds, out, workers, trace=False):
     print(f"{len(jobs)} jobs ({sum(len(j[4]) for j in jobs)} runs), {workers} workers -> {path}", flush=True)
     t0 = time.time()
     with ThreadPoolExecutor(max_workers=workers) as ex, open(path, "a") as fh:
-        futs = {ex.submit(run_job, algo, pid, arm, todo,
+        futs = {ex.submit(run_job, algo, pid, arm, todo, phase=phase,
                           trace_dir=os.path.join(out, "traces", b) if trace else None): (b, pid)
                 for b, algo, arm, pid, todo in jobs}
         for k, fut in enumerate(as_completed(futs), 1):
@@ -113,11 +113,13 @@ def main():
     ap.add_argument("--out", default="results/baselines")
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     ap.add_argument("--trace", action="store_true", help="also save per-evaluation traces (.npz)")
+    ap.add_argument("--phase", choices=("train", "test"), default="test",
+                    help="budget set from harness/config.py (default: test budgets)")
     a = ap.parse_args()
     unknown = set(a.baselines) - set(BASELINES)
     if unknown:
         ap.error(f"unknown baselines {sorted(unknown)}; choose from {list(BASELINES)}")
-    run(a.baselines, a.problems, a.seeds, a.out, a.workers, a.trace)
+    run(a.baselines, a.problems, a.seeds, a.out, a.workers, a.trace, a.phase)
 
 
 if __name__ == "__main__":

@@ -39,12 +39,12 @@ def _run_aocc(r, penalise_failures=True):
 def evaluate_candidate(algorithm: str, arm: str, problem_ids=config.TRAIN_PROBLEMS,
                        seeds=config.TRAIN_SEEDS, *, class_name: str | None = None,
                        n_workers: int | None = None, trace_dir: str | None = None,
-                       algorithm_name: str | None = None) -> CandidateResult:
+                       algorithm_name: str | None = None, phase: str = "train") -> CandidateResult:
     problem_ids = list(problem_ids)
     n_workers = n_workers or min(len(problem_ids), os.cpu_count() or 1)
     with ThreadPoolExecutor(max_workers=n_workers) as ex:
         futs = {pid: ex.submit(run_job, algorithm, pid, arm, seeds, class_name=class_name,
-                               trace_dir=trace_dir) for pid in problem_ids}
+                               trace_dir=trace_dir, phase=phase) for pid in problem_ids}
         results = {pid: f.result() for pid, f in futs.items()}
     per, errors = {}, []
     for pid, rs in results.items():

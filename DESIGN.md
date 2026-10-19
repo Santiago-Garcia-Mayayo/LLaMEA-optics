@@ -104,7 +104,13 @@ f*: best feasible value over all competition submissions (Table 3 of the paper i
 
 * **1 call = 1 evaluation**, objective and constraints together, same cost in every arm.
   Repeated points are counted. No gradients in the main study (D2, see §11).
-* **Budget per run (D3):** lens 2,000 evaluations (20–35 s); CEC 500·d (2,000–11,000; < 2 s).
+* **Budget per run (D3, D11):** lens 10,000 evaluations during evolution and 50,000 at test time
+  (the TFG's standard budget); CEC 500·d (2,000–11,000; < 2 s) in both phases. A lens evaluation
+  costs ~7 ms on one CPU core (~70 s per training run, ~6 min per test run). `harness/config.py`.
+* **Vectorisation:** `jax.vmap` batch evaluation of the lens is implemented and tested equal to
+  single evaluation (≤ 1e-15 relative), but on CPU it is 1.5–3× *slower* per lens (each lens already
+  traces 8,658 rays in one vectorised call), so it is used only on GPU (`LLAMEA_LENS_BATCH` to force).
+  On CPU the speed lever is running seeds/problems in parallel processes (scales linearly).
 * Beyond the budget `func` raises `BudgetExhausted`, which derives from `BaseException` so
   `except Exception` in generated code cannot swallow it; a batch crossing the budget is
   evaluated up to the budget, then raises.
@@ -213,7 +219,7 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   representation matters per problem but not on average: Deb better on RC12 (both algorithms,
   Cliff's δ ≈ +0.9) and RC16 (L-SHADE), penalty better on RC18 (both, δ ≈ −0.75), no difference
   on the lens and elsewhere. This is the reference the LLaMEA arms are compared against.
-* Lens caveat (D11): from random starts with 2,000 evaluations every baseline stays 2–3 orders of
+* Lens caveat (resolved by D11): from random starts with 2,000 evaluations every baseline stays 2–3 orders of
   magnitude above the group template (median best RMS² 0.14–0.87 mm² vs 4.6e-4 mm²), so lens AOCCs
   are compressed in 0.50–0.53 and the lens contributes little to fitness differences. Options:
   larger lens budget, or a score range matched to reachable values; to decide before the main runs.
@@ -238,10 +244,9 @@ deliberate: the selection criterion depends on it and a practitioner would know 
 | D7 | CEC penalty weight ρ | 10·max(1, \|f*\|) |
 | D8 | LLM and temperature | — |
 | D10 | LDG-EA as lens baseline | needs code/results from K. Antonov |
-| D11 | lens budget / score range (see §12: baselines are far from the template, lens scores compressed) | 2,000 evals, [1e-5, 1] mm² |
 
 Decided: D2 no gradients in the main study; D3 budgets as in §5; D4 score ranges as in §6;
-D5 AOCC as fitness; D9 violation normalisation as in §6; integers as typed indices with
+D5 AOCC as fitness; D9 violation normalisation as in §6; D11 lens budgets 10k/50k; integers as typed indices with
 [-0.5, n-0.5] bounds; FEAS_TOL = 1e-9; ray loss as graded constraint.
 
 ## Change log
@@ -250,3 +255,6 @@ D5 AOCC as fitness; D9 violation normalisation as in §6; integers as typed indi
   ray loss added as a graded constraint (lens: 23 → 24 constraints) and violation normalisation
   changed from per-tolerance (lens) / median |g| (CEC) to the common rule D9.
 * 2026-10-19 — baselines implemented (L-SHADE and CMA-ES in penalty/Deb pairs, random search).
+* 2026-10-19 — D11: lens budget 2,000 → 10,000 (train) / 50,000 (test), as in the TFG; with 2,000
+  every baseline stayed 2–3 orders of magnitude above the template. Batch (vmap) lens evaluation
+  added for GPU.

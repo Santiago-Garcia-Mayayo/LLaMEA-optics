@@ -56,3 +56,37 @@ def test_feedback_lens_descriptor_matches_problem():
     for inst in ("original", "realistic_draft"):
         p = LensSuiteProblem(inst)
         assert _LENS_DESCR == {"dim": p.dim, "n_int": len(p.integer_indices), "m": p.n_constraints}
+
+
+def test_lens_batch_equals_single():
+    """Vectorised lens evaluation (used on GPU) gives the values of single evaluation."""
+    p = LensSuiteProblem("original")
+    rng = np.random.default_rng(5)
+    X = [p.lb + rng.random(p.dim) * (p.ub - p.lb) for _ in range(9)] + [p.template()]
+    B = p.evaluate_batch(X)
+    for x, b in zip(X, B):
+        s = p.evaluate(x)
+        assert (np.isinf(s.f) and np.isinf(b.f)) or abs(s.f - b.f) <= 1e-9 * max(1.0, abs(s.f))
+        assert np.allclose(s.v, b.v, rtol=1e-9, atol=1e-12)
+        assert abs(s.penalty - b.penalty) <= 1e-9 * max(1.0, abs(s.penalty))
+
+
+def test_harness_batch_path_matches_single_path(monkeypatch):
+    from harness import Harness
+    p = LensSuiteProblem("original")
+    rng = np.random.default_rng(6)
+    Z = rng.uniform(-1, 1, size=(6, p.dim))
+    Z[:, p.integer_indices] = rng.integers(0, 120, size=(6, len(p.integer_indices)))
+    monkeypatch.setenv("LLAMEA_LENS_BATCH", "1")
+    fb, gb = Harness(p, "free", 10).func(Z)
+    monkeypatch.setenv("LLAMEA_LENS_BATCH", "0")
+    fs, gs = Harness(p, "free", 10).func(Z)
+    assert np.allclose(np.nan_to_num(fb, posinf=1e300), np.nan_to_num(fs, posinf=1e300), rtol=1e-9)
+    assert np.allclose(gb, gs, rtol=1e-9, atol=1e-12)
+
+
+def test_budgets_by_phase():
+    from harness import config
+    lens, rc15 = LensSuiteProblem("original"), CECProblem(15)
+    assert config.budget_for(lens, "train") == 10_000 and config.budget_for(lens, "test") == 50_000
+    assert config.budget_for(rc15, "train") == config.budget_for(rc15, "test") == 3_500

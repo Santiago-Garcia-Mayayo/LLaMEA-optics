@@ -201,6 +201,22 @@ class LensSuiteProblem(_Base):
         f, v, pen = self._p.evaluate_all(self.seal(x))
         return Evaluation(float(f), np.asarray(v, float), float(pen))
 
+    @property
+    def batch_ok(self) -> bool:
+        """Vectorised (jax.vmap) evaluation pays off on GPU only: on CPU each lens already traces
+        8,658 rays in one vectorised call and vmap is 1.5-3x *slower* per lens (measured).
+        Force with LLAMEA_LENS_BATCH=1 / disable with =0."""
+        flag = os.environ.get("LLAMEA_LENS_BATCH")
+        if flag is not None:
+            return flag == "1"
+        import jax
+        return jax.default_backend() != "cpu"
+
+    def evaluate_batch(self, X) -> list:
+        """Same values as [evaluate(x) for x in X] up to float round-off (~1e-15 relative)."""
+        return [Evaluation(float(f), np.asarray(v, float), float(p))
+                for f, v, p in self._p.evaluate_all_batch(np.array([self.seal(x) for x in X]))]
+
     def template(self):
         return self._p.template()
 

@@ -46,7 +46,7 @@ def candidate_timeout(problem_ids=config.TRAIN_PROBLEMS, seeds=config.TRAIN_SEED
     limits = []
     for pid in problem_ids:
         p = _LensStub(pid) if pid.startswith("lens/") else get_problem(pid)
-        limits.append(config.time_limit_for(p, config.budget_for(p)))
+        limits.append(config.time_limit_for(p, config.budget_for(p, "train")))
     return int(config.STARTUP_GRACE_S + len(seeds) * (max(limits) + 15.0) + 60)
 
 
