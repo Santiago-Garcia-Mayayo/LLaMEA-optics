@@ -3,13 +3,13 @@
 10 problems, one interface (`suite.py`): 2 lens instances + 8 CEC 2020 real-world problems.
 
 ```python
-from suite import load_suite
-for p in load_suite():
-    x = p.seal(x)                 # clip + round integers (harness does this always)
-    f, v = p.constrained(x)       # free arm: objective + violations v_i >= 0
-    s = p.penalty(x)              # penalty arm: one scalar
-    p.is_feasible(x)              # shared evaluation criterion
+from problems import get_problem, PROBLEM_IDS
+p = get_problem("cec/RC15")       # or "lens/original", ...
+ev = p.evaluate(x)                # ONE simulation -> ev.f, ev.v (violations >= 0), ev.penalty
+p.is_feasible(ev)                 # f finite and all v <= FEAS_TOL (1e-9)
+p.variables                       # typed variables: continuous / ordinal / binary / categorical
 ```
+Algorithms never call problems directly: they go through the harness (`harness/`).
 
 ## Setup
 
@@ -18,7 +18,7 @@ for p in load_suite():
 cd cec2020_cpp && g++ -std=c++14 -O2 -fPIC -shared -I/usr/include/eigen3 -o cec2020rwc.so cec2020rwc.cpp -lm && cd ..
 # 2) lensgopt: point LENSGOPT_ROOT at the CameraLensSimulation repo (or pip install -e it)
 export LENSGOPT_ROOT=/path/to/CameraLensSimulation-main
-python -m pytest test_suite.py -q
+python -m pytest -q   # from the repo root
 ```
 `cec2020_cpp/` is V. Stanovov's code (GPL-3.0), unchanged.
 
@@ -36,7 +36,7 @@ python -m pytest test_suite.py -q
 
 * `original.penalty(x)` equals lensgopt's loss exactly (checked on the template; per-gap
   edge/axis terms reproduce lensgopt's penalties to 7e-12 on 150 perturbed designs).
-* 23 constraints: 10 centre thicknesses, 11 edge thicknesses (incl. last surface→sensor), FWD, EFFL.
+* 24 constraints: rays lost (fraction, graded), 10 centre thicknesses, 11 edge thicknesses (incl. last surface→sensor), FWD, EFFL. Violations are normalised by data-driven scales (DESIGN.md §6, D9).
 * RMS is computed by lensgopt over surviving rays only (all rays lost ⇒ RMS = 0), hence f = inf
   whenever any ray is lost.
 * **realistic_draft values are a draft**: sources in `lens.py` (`LensSpec.source`); to be fixed with
@@ -47,6 +47,7 @@ python -m pytest test_suite.py -q
 ## Control: CEC 2020 real-world constrained (Kumar et al. 2020)
 
 Code: C++ port by V. Stanovov (linked from the official repo), compiled as `cec2020rwc.so`.
+Scripts used for selection and verification: `scripts/` (results in `data/`).
 **Verified against the official MATLAB code in Octave**: identical f, g on 21 points per problem
 (max rel. diff ≤ 3e-11) for all 16 candidates except RC24 (f differs at infeasible points → excluded).
 
@@ -59,7 +60,7 @@ best-known value reproducible; ≥ 1 constraint active at x*; not solved by a 2k
 | RC13 | process design | 5 | 2 | 3 | 26887.422 | 1 |
 | RC15 | speed reducer | 7 | 0 | 11 | 2994.42446576 | 4 |
 | RC16 | industrial refrigeration | 14 | 0 | 15 | 0.032213 | 2* |
-| RC18 | pressure vessel (discrete plates) | 4 | (0.0625 grid) | 4 | 6059.7143 | 2 |
+| RC18 | pressure vessel (plates in 1/16 in) | 4 | 2 | 4 | 6059.7143 | 2 |
 | RC21 | multiple disk clutch brake | 5 | 0 | 8 | 0.23524246 | 1 |
 | RC25 | hydrostatic thrust bearing | 4 | 0 | 7 | 1616.11976505 | 4 |
 | RC26 | four-stage gearbox | 22 | 22 | 86 | 35.359232 | 24* |
@@ -69,17 +70,12 @@ best-known value reproducible; ≥ 1 constraint active at x*; not solved by a 2k
 
 f*: Table 3 of the paper is outdated for several problems (e.g. RC18 = 6059.71 after the
 0.0625-inch fix, RC25 = 1616.12 < 1625.44 in the table). We use the best feasible final value
-over all competition submissions (`cec_fstar_consensus.json`).
+over all competition submissions (`data/cec_fstar_consensus.json`).
 
 Excluded and why: RC03, RC14, RC28, RC30 (competition submissions disagree → code-version
 ambiguity); RC10 (solved in < 2k evals); RC17, RC19 (trivial classics); RC24 (C++≠MATLAB);
 all problems with equality constraints (different regime).
 
-## Decisions still open (for the preregistration)
+## Decisions
 
-1. Penalty arm on CEC: static `f + ρ Σ v_i`, ρ = 10·max(1,|f*|), v normalised by the median
-   |g_i| over 2000 random points. Any fixed ρ is a modelling choice (like the lens weights).
-2. Feasibility tolerance: 0 for CEC (competition), 1e-9 for the lens (float noise on bounds).
-3. Show problems to the LLM in [-1, 1]^d and without names (RC15, RC18, RC21 are textbook problems
-   the LLM may recognise).
-4. Train/test split of problems for LLaMEA (e.g. evolve on a subset, report on all).
+All design decisions (penalty weights, tolerance, encoding, splits) are in ../DESIGN.md.

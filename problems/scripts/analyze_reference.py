@@ -4,10 +4,10 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cec2020 import CEC2020Problem  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+from problems.cec2020 import CEC2020Problem  # noqa: E402
 
-runs = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_runs.json")))
+runs = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "reference_runs.json")))
 by = {}
 for r in runs:
     by.setdefault(r["num"], []).append(r)
@@ -47,4 +47,4 @@ for num in sorted(by):
                      best_f=best["f"], rel_gap=rel, n_feasible_runs=len(feas), n_runs=len(rs),
                      active_at_xstar=active, evals_to_1e4=float(reach_u), gap_at_2k=float(g2k),
                      x_best=best["x"]))
-json.dump(rows, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_summary.json", "w"), indent=1)
+json.dump(rows, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "reference_summary.json"), "w"), indent=1)

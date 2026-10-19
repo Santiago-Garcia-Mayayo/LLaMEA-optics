@@ -1,6 +1,7 @@
-import sys, numpy as np, cma, json
-sys.path.insert(0, ".")
-from suite import LensSuiteProblem
+import json, os, sys
+import numpy as np, cma
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+from problems.suite import LensSuiteProblem
 out = {}
 for inst in ["realistic_draft", "original"]:
     p = LensSuiteProblem(inst); t0 = p.template(); nx = p._p.nx
@@ -14,7 +15,7 @@ for inst in ["realistic_draft", "original"]:
             Z = np.array(es.ask()); fs = []
             for z in Z:
                 th = np.r_[start + z * scale, t0[nx:]]
-                pen = p.penalty(th); f, v = p.constrained(th)
+                ev = p.evaluate(th); pen, f, v = ev.penalty, ev.f, ev.v
                 fs.append(pen if np.isfinite(pen) else 1e6); rec.append((pen, f, v.tolist()))
             es.tell(list(Z), fs)
         print(inst, run, es.result.fbest, flush=True)
@@ -26,4 +27,4 @@ for inst in ["realistic_draft", "original"]:
                  "frac_any_viol_top5": float((V[q] > 1e-9).any(1).mean()),
                  "share_penalty_top5": float(np.median((pen[q] - F[q]) / pen[q]))}
     print(inst, json.dumps(out[inst]), flush=True)
-json.dump(out, open("diag_realistic.json", "w"), indent=1)
+json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "diag_realistic.json"), "w"), indent=1)

@@ -54,14 +54,17 @@ NAMES = {
 }
 
 
-# 0-based indices of variables that the official code rounds (cec2020rwc.cpp).
-# RC18 rounds x0,x1 to multiples of 0.0625 (plate thickness); we treat the raw
-# variable as integer-valued in its own units only if the bounds say so, so it is
-# left out here and the simulator's own rounding applies.
+# 0-based indices of variables that the official code rounds (read from cec2020rwc.cpp),
+# with their kind. All selected integer variables are ordinal or binary:
+#   RC12: 4 binary design decisions; RC13: x4 in {78..102}, x5 in {33..45};
+#   RC14: N_i in {1..3}; RC18: plate thicknesses as integer multiples of 0.0625 in (code
+#   rounds x and multiplies by 0.0625), x in {1..99}; RC26: tooth counts {7..76}, module
+#   index {1..4} into an increasing table, position index {1..9} into an increasing table.
 INTEGER_VARS = {
     8: [1], 9: [2], 10: [2], 11: [4, 5], 12: [3, 4, 5, 6], 13: [3, 4], 14: [0, 1, 2],
-    22: list(range(9)), 26: list(range(22)), 28: [2], 30: [0, 2],
+    18: [0, 1], 22: list(range(9)), 26: list(range(22)), 28: [2], 30: [0, 2],
 }
+INTEGER_KINDS = {12: "binary"}  # default for the others: "ordinal"
 
 
 @dataclass

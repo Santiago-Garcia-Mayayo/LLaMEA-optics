@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llamea-constraints"
+version = "0.1.0"
+description = "Constraint representation in LLM-driven algorithm discovery (LLaMEA): problems + harness"
+requires-python = ">=3.10"
+dependencies = ["numpy", "scipy"]
+
+[project.optional-dependencies]
+lens = ["jax", "matplotlib", "adjustText", "pandas", "openpyxl"]
+llamea = ["llamea"]
+dev = ["pytest", "cma"]
+
+[tool.setuptools]
+packages = ["problems", "harness"]
+
+[tool.setuptools.package-data]
+problems = ["data/*.json", "cec2020_cpp/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

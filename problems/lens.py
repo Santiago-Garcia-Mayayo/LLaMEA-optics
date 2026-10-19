@@ -21,15 +21,38 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+import json
 import os
-# repo root of CameraLensSimulation (lensgopt); or pip install -e it
-sys.path.insert(0, os.environ.get("LENSGOPT_ROOT", os.path.join(os.path.dirname(__file__), "..", "CameraLensSimulation")))
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import warnings
+
+
+def _import_lensgopt():
+    """lensgopt (K. Antonov's CameraLensSimulation) either installed, or found via
+    $LENSGOPT_ROOT, or as a sibling folder ../CameraLensSimulation of this repo."""
+    try:
+        import lensgopt  # noqa: F401
+        return
+    except ImportError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [os.environ.get("LENSGOPT_ROOT", "")] + [
+        os.path.join(here, "..", "..", name) for name in ("CameraLensSimulation", "CameraLensSimulation-main")
+    ]
+    for c in candidates:
+        if c and os.path.isdir(os.path.join(c, "lensgopt")):
+            sys.path.insert(0, os.path.abspath(c))
+            return
+    raise ImportError("lensgopt not found: pip install -e the CameraLensSimulation repo, "
+                      "or set LENSGOPT_ROOT to its folder")
+
+
+_import_lensgopt()
 import lensgopt.optics.optics as optics  # noqa: E402
 import lensgopt.optics.shapes as shapes  # noqa: E402
 import lensgopt.optics.model as model  # noqa: E402
 import lensgopt.optics.loss as lgloss  # noqa: E402
-from double_gauss_objective import DoubleGaussObjective  # noqa: E402
+
+from .double_gauss_objective import DoubleGaussObjective  # noqa: E402
 
 # gap i = distance from surface i to surface i+1 (distances_z), medium after surface i
 GLASS_GAPS = (0, 2, 3, 6, 7, 9)
@@ -91,8 +114,26 @@ class LensProblem:
         self.lb, self.ub = lb, ub
         self._dist_opt_idx = np.asarray(f.distances_optimized_idx)
         self._eval = jax.jit(self._raw_jax)
+        self.n_rays = self._count_rays()
+        self.scales = self._load_scales()
 
     # ------------------------------------------------------------------ physics
+    def _count_rays(self) -> int:
+        """Number of rays traced for the RMS (pupil grid x fields x wavelengths + chief rays)."""
+        c = self.cnst
+        xc, xm = self.obj.init_from_templates()
+        curv, dist, iors = self.obj.factory.unpack_full_with_iors(
+            jnp.asarray(np.clip(xc, self.lb[: self.nx], self.ub[: self.nx])), jnp.asarray(xm))
+        props = optics.compute_optical_properties(c, model.LensSystemVariables(curv, dist, iors))
+        ang = jnp.array(c.field_factors) * c.lens_field.max_field
+        rays = optics.RayRMSSpotSize.create_grid_rays_angle_field_for_rms_spot(
+            n_rays_row=c.n_rays_row, n_wl=len(c.wavelengths), r_ep=props.entrance_pupil_diameter / 2,
+            z_ep=props.entrance_pupil_z, angles_z_deg=ang)
+        rays = optics.RayRMSSpotSize.append_ray(
+            rays, optics.RayRMSSpotSize.create_chief_rays(len(c.wavelengths), z_ep=props.entrance_pupil_z,
+                                                          angles_z_deg=ang))
+        return int(rays.mask.sum())
+
     def _raw_jax(self, x, mats):
         f = self.obj.factory
         curv, dist, iors = f.unpack_full_with_iors(x, mats)
@@ -145,27 +186,44 @@ class LensProblem:
             "fwd": float(fwd), "effl": float(effl),
         }
 
-    def violations(self, e: dict) -> np.ndarray:
-        """Normalised violations (>=0, 0 = satisfied), one per physical constraint."""
+    def raw_violations(self, e: dict) -> np.ndarray:
+        """Violations in physical units (>= 0, 0 = satisfied): fraction of rays lost, then mm."""
         s = self.spec
-        g_ct = [max(0.0, s.glass_min_ct - e["centre"][i]) / s.glass_min_ct for i in GLASS_GAPS]
-        g_ct += [max(0.0, s.air_min_ct - e["centre"][i]) / s.air_min_ct for i in AIR_GAPS]
-        g_ed = [max(0.0, s.glass_min_edge - e["edge"][i]) / s.glass_min_edge for i in GLASS_GAPS]
-        g_ed += [max(0.0, s.air_min_edge - e["edge"][i]) / s.air_min_edge for i in AIR_GAPS + (SENSOR_GAP,)]
-        g_fwd = [max(0.0, s.fwd_min - e["fwd"]) / s.fwd_min]
-        tol = s.effl_tol if s.effl_tol is not None else 0.5
-        g_effl = [max(0.0, abs(e["effl"] - s.effl_target) - (s.effl_tol or 0.0)) / tol]
-        return np.array(g_ct + g_ed + g_fwd + g_effl)
+        g_rays = [min(1.0, e["n_dropped"] / self.n_rays)]  # graded hidden constraint (f = inf if > 0)
+        g_ct = [max(0.0, s.glass_min_ct - e["centre"][i]) for i in GLASS_GAPS]
+        g_ct += [max(0.0, s.air_min_ct - e["centre"][i]) for i in AIR_GAPS]
+        g_ed = [max(0.0, s.glass_min_edge - e["edge"][i]) for i in GLASS_GAPS]
+        g_ed += [max(0.0, s.air_min_edge - e["edge"][i]) for i in AIR_GAPS + (SENSOR_GAP,)]
+        g_fwd = [max(0.0, s.fwd_min - e["fwd"])]
+        g_effl = [max(0.0, abs(e["effl"] - s.effl_target) - (s.effl_tol or 0.0))]
+        return np.array(g_rays + g_ct + g_ed + g_fwd + g_effl, float)
+
+    def violations(self, e: dict) -> np.ndarray:
+        """Normalised violations: raw / s_j, s_j = median positive raw violation of constraint j
+        over 2000 seeded uniform samples (data/lens_violation_scales.json), same rule as CEC."""
+        return self.raw_violations(e) / self.scales
+
+    def _load_scales(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "lens_violation_scales.json")
+        if os.path.exists(path):
+            with open(path) as fh:
+                d = json.load(fh)
+            if self.spec.name in d:
+                sc = np.asarray(d[self.spec.name]["scales"], float)
+                assert sc.size == len(self.CONSTRAINT_NAMES)
+                return sc
+        warnings.warn(f"no stored violation scales for lens/{self.spec.name}: run "
+                      "problems/scripts/compute_lens_scales.py; using 1.0")
+        return np.ones(len(self.CONSTRAINT_NAMES))
 
     CONSTRAINT_NAMES = (
-        [f"ct_glass_{i}" for i in GLASS_GAPS] + [f"ct_air_{i}" for i in AIR_GAPS]
+        ["rays_lost"] + [f"ct_glass_{i}" for i in GLASS_GAPS] + [f"ct_air_{i}" for i in AIR_GAPS]
         + [f"edge_glass_{i}" for i in GLASS_GAPS] + [f"edge_air_{i}" for i in AIR_GAPS + (10,)]
         + ["fwd", "effl"]
     )
 
-    def penalty(self, theta) -> float:
-        """Summed-penalty loss. For `original` this is exactly lensgopt's loss."""
-        e = self.evaluate(theta)
+    def penalty_from(self, e: dict) -> float:
+        """Summed-penalty loss from one evaluation. For `original` this is exactly lensgopt's loss."""
         if self.spec is ORIGINAL:
             return float(e["lensgopt_terms"].sum())
         s = self.spec
@@ -178,6 +236,15 @@ class LensProblem:
         pen += sq(np.array([e["fwd"] - s.fwd_min]))
         pen += max(0.0, abs(e["effl"] - s.effl_target) - (s.effl_tol or 0.0)) ** 2
         return e["rms2"] + pen
+
+    def evaluate_all(self, theta):
+        """One simulation -> (f, v, penalty). f = inf if any ray is lost."""
+        e = self.evaluate(theta)
+        f = np.inf if e["n_dropped"] > 0 else e["rms2"]
+        return f, self.violations(e), self.penalty_from(e)
+
+    def penalty(self, theta) -> float:
+        return self.penalty_from(self.evaluate(theta))
 
     def constrained(self, theta):
         e = self.evaluate(theta)

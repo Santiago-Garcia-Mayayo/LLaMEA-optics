@@ -15,8 +15,8 @@ from multiprocessing import Pool
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cec2020 import CEC2020Problem  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+from problems.cec2020 import CEC2020Problem  # noqa: E402
 
 
 def better(f1, v1, f2, v2):
@@ -94,5 +94,5 @@ if __name__ == "__main__":
     t0 = time.time()
     with Pool() as pool:
         out = pool.starmap(run, jobs)
-    json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "reference_runs.json", "w"))
+    json.dump(out, open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "reference_runs.json"), "w"))
     print("done", time.time() - t0)

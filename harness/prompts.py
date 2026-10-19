@@ -1,0 +1,119 @@
+"""Task prompts for the three arms. The texts are identical except for the paragraph that
+describes what func returns (and, in the guided arm, one extra paragraph of hints).
+Keep it that way: any other difference between arms is a confound."""
+from __future__ import annotations
+
+import textwrap
+
+ROLE = "You are a highly skilled computer scientist and Python expert in optimisation."
+
+_COMMON_HEAD = """\
+Your task is to design a novel, high-performing optimisation algorithm in Python for
+black-box, constrained, mixed-integer optimisation problems from engineering design.
+The algorithm is evaluated on several such problems (with different dimensions and numbers
+of constraints) and must work on all of them without being told which problem it is.
+
+The code must define a class with `__init__(self, budget, dim)` and `__call__(self, func)`.
+`__call__` must optimise `func` using at most `self.budget` calls to `func`; calls beyond the
+budget raise an exception that ends the run (do not catch it). `func` also accepts a batch:
+an array of shape (n, dim), counting n evaluations.
+
+Search space (available as attributes of `func`):
+- `func.bounds.lb`, `func.bounds.ub`: lower and upper bounds, arrays of length `dim`.
+- `func.variable_types[i]` is "continuous", "ordinal", "binary" or "categorical".
+  Continuous variables lie in [-1, 1]. A variable of the other types takes the integer values
+  0, 1, ..., `func.n_values[i]` - 1; its bounds are [-0.5, n_values[i] - 0.5] and any real input
+  is rounded to the nearest valid integer. Ordinal values are ordered; categorical values are
+  labels (do not assume that neighbouring indices are similar); binary variables are 0/1 decisions.
+- `func.integer_indices`, `func.continuous_indices`: index arrays for the two groups.
+"""
+
+_INTERFACE = {
+    "penalty": """\
+What `func` returns:
+- `y = func(x)`: a single float to be minimised. It is the design objective plus penalty
+  terms for violated constraints (zero penalty when all constraints are satisfied).
+""",
+    "free": """\
+What `func` returns:
+- `f, g = func(x)`: `f` is the design objective (a float, to be minimised); `g` is a numpy
+  array with one entry per constraint (`func.n_constraints` entries), the normalised amount
+  by which each constraint is violated: `g[j] == 0` means constraint j is satisfied and
+  `g[j] > 0` measures the violation. A point is feasible if all entries of `g` are 0.
+  `f` may be `inf` for points where the objective is undefined (always infeasible).
+""",
+}
+_INTERFACE["guided"] = _INTERFACE["free"]
+
+_HINTS = """\
+Hints: established constraint-handling techniques include feasibility rules (Deb's rules:
+feasible beats infeasible, then lower objective, then lower total violation), epsilon-
+constrained methods, stochastic ranking, adaptive/dynamic penalty functions, repair of
+infeasible points, and treating constraint violation as an additional objective. You may
+use, adapt or combine any of them.
+"""
+
+_COMMON_TAIL = """\
+Evaluation criterion: only feasible points count. For each problem the score is based on the
+best objective value among the feasible points evaluated during the run (any feasible point
+is better than any infeasible one), and the anytime performance over the whole budget is
+measured, so finding good feasible points early matters.
+
+Give an excellent and novel algorithm to solve this task.
+"""
+
+_EXAMPLE = {
+    "penalty": '''\
+An example of such code (a simple random search), is as follows:
+```python
+import numpy as np
+
+class RandomSearch:
+    def __init__(self, budget=10000, dim=10):
+        self.budget = budget
+        self.dim = dim
+
+    def __call__(self, func):
+        best_y, best_x = np.inf, None
+        for _ in range(self.budget):
+            x = np.random.uniform(func.bounds.lb, func.bounds.ub)
+            y = func(x)
+            if y < best_y:
+                best_y, best_x = y, x
+        return best_y, best_x
+```
+''',
+    "free": '''\
+An example of such code (a simple random search), is as follows:
+```python
+import numpy as np
+
+class RandomSearch:
+    def __init__(self, budget=10000, dim=10):
+        self.budget = budget
+        self.dim = dim
+
+    def __call__(self, func):
+        best_f, best_x = np.inf, None
+        for _ in range(self.budget):
+            x = np.random.uniform(func.bounds.lb, func.bounds.ub)
+            f, g = func(x)
+            if np.all(g == 0) and f < best_f:
+                best_f, best_x = f, x
+        return best_f, best_x
+```
+''',
+}
+_EXAMPLE["guided"] = _EXAMPLE["free"]
+
+
+def task_prompt(arm: str) -> str:
+    parts = [_COMMON_HEAD, _INTERFACE[arm]]
+    if arm == "guided":
+        parts.append(_HINTS)
+    parts.append(_COMMON_TAIL)
+    return "\n".join(textwrap.dedent(p) for p in parts)
+
+
+def example_prompt(arm: str) -> str:
+    return _EXAMPLE[arm]
