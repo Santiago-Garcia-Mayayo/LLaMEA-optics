@@ -16,6 +16,9 @@ import traceback
 
 def main(job_path: str, out_path: str):
     os.environ.setdefault("JAX_PLATFORMS", "cpu")
+    from problems._threads import limit_threads, pin_to_random_cores
+    limit_threads()          # before numpy/jax load: few threads per worker
+    pin_to_random_cores()    # thread pools sized to a few cores; see problems/_threads.py
     # persistent XLA cache: the lens simulator compiles once per machine instead of once per job
     os.environ.setdefault("JAX_COMPILATION_CACHE_DIR",
                           os.path.join(os.path.expanduser("~"), ".cache", "llamea_constraints_jax"))

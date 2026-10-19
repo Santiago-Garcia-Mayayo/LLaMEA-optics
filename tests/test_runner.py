@@ -120,3 +120,15 @@ def test_crash_message_includes_stderr():
     code = "import os\nclass A:\n  def __init__(self, budget, dim): pass\n  def __call__(self, f):\n    os._exit(3)"
     r = run_job(code, "toy/basic", "free", [0], class_name="A", budget=10, time_limit=30)[0]
     assert r.status == "crashed" and "exit code 3" in r.error
+
+
+def test_few_cores_restores_affinity(monkeypatch):
+    import os
+    from problems import _threads
+    if not hasattr(os, "sched_getaffinity"):
+        return
+    monkeypatch.setenv("LLAMEA_CORES_PER_PROCESS", "1")
+    before = os.sched_getaffinity(0)
+    with _threads.few_cores():
+        assert len(os.sched_getaffinity(0)) == 1
+    assert os.sched_getaffinity(0) == before

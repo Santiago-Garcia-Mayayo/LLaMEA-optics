@@ -21,6 +21,11 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from ._threads import few_cores
+
+with few_cores():          # JAX's CPU client sizes its thread pools now (see _threads.py)
+    jax.devices()
+
 import json
 import os
 import warnings
