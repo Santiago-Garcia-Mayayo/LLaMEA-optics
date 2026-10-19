@@ -196,7 +196,7 @@ deliberate: the selection criterion depends on it and a practitioner would know 
 
 ## 12. Validation of the harness (2026-10-18)
 
-* 54 automated tests (`python -m pytest`), including: uniform coverage of integer values under
+* 65 automated tests (`python -m pytest`), including: uniform coverage of integer values under
   uniform sampling (fails on purpose with the v5 mapping and with [0, n-1] bounds); hard budget
   (also against code that catches `Exception` or everything); identical evaluation in all arms;
   best-feasible record = brute force; NaN handling; timeouts (in func, SIGALRM, hard kill);
@@ -206,6 +206,17 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   120/120 runs completed; max wall time per run 33 s (lens) and < 2 s (CEC), far below the limits.
   Random search gives identical results in both arms (same evaluations underneath). Mean AOCC:
   random search 0.45, DE + penalty 0.59, DE + Deb's rules 0.60.
+
+* Baselines on the full test set (5 baselines × 10 problems × 15 seeds = 750 runs, all completed;
+  `results/baselines/`). Mean AOCC: random 0.452, L-SHADE penalty 0.541 / Deb 0.544,
+  CMA-ES penalty 0.522 / Deb 0.523. Within pairs (Mann-Whitney, Holm over 20 tests) the
+  representation matters per problem but not on average: Deb better on RC12 (both algorithms,
+  Cliff's δ ≈ +0.9) and RC16 (L-SHADE), penalty better on RC18 (both, δ ≈ −0.75), no difference
+  on the lens and elsewhere. This is the reference the LLaMEA arms are compared against.
+* Lens caveat (D11): from random starts with 2,000 evaluations every baseline stays 2–3 orders of
+  magnitude above the group template (median best RMS² 0.14–0.87 mm² vs 4.6e-4 mm²), so lens AOCCs
+  are compressed in 0.50–0.53 and the lens contributes little to fitness differences. Options:
+  larger lens budget, or a score range matched to reachable values; to decide before the main runs.
 
 ## 13. Known limitations
 
@@ -227,6 +238,7 @@ deliberate: the selection criterion depends on it and a practitioner would know 
 | D7 | CEC penalty weight ρ | 10·max(1, \|f*\|) |
 | D8 | LLM and temperature | — |
 | D10 | LDG-EA as lens baseline | needs code/results from K. Antonov |
+| D11 | lens budget / score range (see §12: baselines are far from the template, lens scores compressed) | 2,000 evals, [1e-5, 1] mm² |
 
 Decided: D2 no gradients in the main study; D3 budgets as in §5; D4 score ranges as in §6;
 D5 AOCC as fitness; D9 violation normalisation as in §6; integers as typed indices with
