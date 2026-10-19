@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 
 from baselines import BASELINES
-from baselines.cmaes import CMAESDeb, CMAESPenalty, RandomSearch
+from baselines.cmaes import CMAESDeb, CMAESPenalty
+from baselines.random_search import RandomSearch
 from baselines.common import DebComparison, PenaltyComparison, leq, lt, order
 from baselines.lshade import LSHADEDeb, LSHADEPenalty
 from harness.runner import run_job, run_one
