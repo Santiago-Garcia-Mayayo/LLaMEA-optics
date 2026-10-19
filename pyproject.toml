@@ -15,7 +15,7 @@ llamea = ["llamea"]
 dev = ["pytest", "cma"]
 
 [tool.setuptools]
-packages = ["problems", "harness"]
+packages = ["problems", "harness", "baselines"]
 
 [tool.setuptools.package-data]
 problems = ["data/*.json", "cec2020_cpp/*"]

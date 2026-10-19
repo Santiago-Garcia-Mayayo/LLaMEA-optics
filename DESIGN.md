@@ -155,8 +155,13 @@ The **harness**, never the algorithm, records every evaluation and the best poin
 * **Test** (final algorithms): all 10 problems, 15 new seeds (1000–1014). Held-out problems
   (lens realistic, RC13, RC16, RC18, RC26) are reported separately from training problems.
 * **Replicates:** 10 independent LLaMEA runs per arm (30 runs).
-* **Baselines** on the same harness and budgets: DE with the penalty, DE with Deb's rules,
-  CMA-ES with constraint handling, random search; on the lens also LDG-EA and multistart SLSQP.
+* **Baselines** (`baselines/`) on the same harness, budgets and test seeds, in matched pairs that
+  differ only in the comparison (penalty scalar vs Deb's feasibility rules on (f, g)):
+  L-SHADE (success-history DE, current-to-pbest/1 + archive, linear population reduction;
+  initial population capped at budget/25 for our budgets), CMA-ES (pycma, rank-based, IPOP
+  restarts, pycma integer handling), plus random search. **PENDING:** LDG-EA on the lens (code or
+  results from K. Antonov). Multistart SLSQP only in the gradient experiment (§11): without
+  gradients each finite-difference gradient would cost d + 1 evaluations of the budget.
 
 ## 9. Feedback to the LLM
 
@@ -221,6 +226,7 @@ deliberate: the selection criterion depends on it and a practitioner would know 
 | D6 | lens instance for training | `lens/original` |
 | D7 | CEC penalty weight ρ | 10·max(1, \|f*\|) |
 | D8 | LLM and temperature | — |
+| D10 | LDG-EA as lens baseline | needs code/results from K. Antonov |
 
 Decided: D2 no gradients in the main study; D3 budgets as in §5; D4 score ranges as in §6;
 D5 AOCC as fitness; D9 violation normalisation as in §6; integers as typed indices with
@@ -231,3 +237,4 @@ D5 AOCC as fitness; D9 violation normalisation as in §6; integers as typed indi
 * 2026-10-18 — first version (problems verified, harness implemented and tested). During testing:
   ray loss added as a graded constraint (lens: 23 → 24 constraints) and violation normalisation
   changed from per-tolerance (lens) / median |g| (CEC) to the common rule D9.
+* 2026-10-19 — baselines implemented (L-SHADE and CMA-ES in penalty/Deb pairs, random search).

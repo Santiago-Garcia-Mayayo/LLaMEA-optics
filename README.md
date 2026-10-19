@@ -15,7 +15,8 @@ harness/             what algorithms see and how they are judged
   llamea_adapter.py  LLaMEA integration
   config.py          problems, splits, seeds, budgets, time limits
   reference_algorithms.py   trusted test algorithms (random search, DE)
-tests/               54 tests (run them after any change)
+baselines/           L-SHADE and CMA-ES (penalty / Deb pairs), random search; run_baselines.py
+tests/               tests (run them after any change)
 ```
 
 ## Setup
@@ -46,6 +47,12 @@ Isolated run of generated code (what LLaMEA uses):
 ```python
 from harness.runner import run_job
 results = run_job(code, "lens/original", "free", seeds=[0, 1, 2], class_name="MyAlgorithm")
+```
+
+Baselines on the test set (resumable; writes results/baselines/runs.jsonl and summary.md):
+
+```bash
+python -m baselines.run_baselines --workers 8
 ```
 
 LLaMEA run of one arm:
