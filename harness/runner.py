@@ -8,8 +8,9 @@ every seed, so a crash or hard kill only loses the seed in progress.
 
 Time is limited at three levels:
   1. inside func: HarnessTimeout once the run exceeds its limit (cross-platform);
-  2. SIGALRM a few seconds later, for code that loops without calling func (POSIX only);
-  3. the parent kills the process if the whole job overruns (always).
+  2. a few seconds later, for code that loops without calling func: SIGALRM on POSIX,
+     a watchdog thread that interrupts the main thread on Windows;
+  3. the parent kills the process (tree) if the whole job overruns (always).
 
 The algorithm interface is LLaMEA's: a class with __init__(self, budget, dim) and
 __call__(self, func). Its return value is ignored: the harness keeps the record.
@@ -29,6 +30,17 @@ from . import config
 from .core import BudgetExhausted, Harness, HarnessTimeout, RunResult
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_USE_SIGALRM = hasattr(__import__("signal"), "setitimer")   # False on Windows
+
+
+def _kill_tree(proc):
+    """Kill the worker and its children. On Windows a venv's python.exe is a launcher that
+    starts the real interpreter as a child, so killing only proc.pid would leave it running."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        proc.kill()
 
 
 def _load_class(algorithm: str, class_name: str | None):
@@ -58,7 +70,14 @@ def run_one(cls, problem, arm: str, seed: int, budget: int, time_limit: float | 
     _seed_everything(seed)
     h = Harness(problem, arm, budget, seed=seed, time_limit=time_limit, keep_trace=keep_trace)
     status, err = None, ""
-    use_alarm = time_limit is not None and hasattr(__import__("signal"), "setitimer")
+    use_alarm = time_limit is not None and _USE_SIGALRM
+    watchdog = None
+    if time_limit is not None and not use_alarm:   # Windows: same role as SIGALRM
+        import _thread
+        import threading
+        watchdog = threading.Timer(time_limit + 5.0, _thread.interrupt_main)
+        watchdog.daemon = True
+        watchdog.start()
     if use_alarm:
         import signal
 
@@ -74,10 +93,16 @@ def run_one(cls, problem, arm: str, seed: int, budget: int, time_limit: float | 
         status = "budget_exhausted"
     except HarnessTimeout as e:
         status, err = "timeout", str(e)
+    except KeyboardInterrupt:
+        if watchdog is None:
+            raise
+        status, err = "timeout", "time limit exceeded (no func calls)"
     except Exception as e:  # error in the algorithm
         status = "error"
         err = f"{type(e).__name__}: {e}\n" + "".join(traceback.format_exc(limit=8))
     finally:
+        if watchdog is not None:
+            watchdog.cancel()
         if use_alarm:
             signal.setitimer(signal.ITIMER_REAL, 0)
             signal.signal(signal.SIGALRM, old)
@@ -107,7 +132,7 @@ def run_job(algorithm: str, problem_id: str, arm: str, seeds, *, class_name: str
                trace_dir=os.path.abspath(trace_dir) if trace_dir else None)
     deadline_s = config.STARTUP_GRACE_S + len(seeds) * (time_limit + 15.0)
     results, fatal, hard_timeout, stderr_tail, exitcode = [], None, False, "", None
-    with tempfile.TemporaryDirectory(prefix="harness_job_") as td:
+    with tempfile.TemporaryDirectory(prefix="harness_job_", ignore_cleanup_errors=True) as td:
         job_path, out_path, err_path = (os.path.join(td, n) for n in ("job.json", "out.jsonl", "err.txt"))
         with open(job_path, "w") as fh:
             json.dump(job, fh)
@@ -121,8 +146,11 @@ def run_job(algorithm: str, problem_id: str, arm: str, seeds, *, class_name: str
                 proc.wait(timeout=deadline_s)
             except subprocess.TimeoutExpired:
                 hard_timeout = True
-                proc.kill()
-                proc.wait(10)
+                _kill_tree(proc)
+                try:
+                    proc.wait(10)
+                except subprocess.TimeoutExpired:
+                    pass
             exitcode = proc.returncode
         if os.path.exists(out_path):
             with open(out_path) as fh:

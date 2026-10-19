@@ -71,6 +71,18 @@ def test_infinite_loop_without_func_calls_is_stopped():
     assert time.time() - t0 < 60
 
 
+def test_watchdog_without_sigalrm_stops_spinning_code(monkeypatch):
+    """Windows path (no SIGALRM): a watchdog thread interrupts the main thread."""
+    from harness import runner
+    from harness.reference_algorithms import SpinsForever
+    from problems import get_problem
+    monkeypatch.setattr(runner, "_USE_SIGALRM", False)
+    t0 = time.time()
+    res, _ = runner.run_one(SpinsForever, get_problem("toy/basic"), "free", 0, 10, 1.0)
+    assert res.status == "timeout" and res.n_evals == 1
+    assert time.time() - t0 < 15
+
+
 def test_lens_and_cec_in_isolated_processes():
     r = run_job(RA + "RandomSearchFree", "lens/original", "free", [0], budget=30, time_limit=120)[0]
     assert r.status == "ok" and r.n_evals == 30, r.error
