@@ -219,6 +219,12 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   representation matters per problem but not on average: Deb better on RC12 (both algorithms,
   Cliff's δ ≈ +0.9) and RC16 (L-SHADE), penalty better on RC18 (both, δ ≈ −0.75), no difference
   on the lens and elsewhere. This is the reference the LLaMEA arms are compared against.
+* Lens at the test budget (pilot, `results/lens50k_pilot/`, 5 seeds × 5 baselines at 50,000
+  evaluations): lensgopt loss medians random 2.3e-1, CMA-ES 1.7–2.1e-1, L-SHADE 2.8e-2 (Deb) /
+  7.4e-2 (penalty; Deb better, p = 0.016); consistent with the TFG (random ~5e-1, RLEMMO ~1.1e-2 at
+  2.5M, LLaMEA's 642ace6e 2–6e-3 with gradient access, LDG-EA 3e-4). Lens AOCCs now 0.57–0.61.
+  The lens rows of `results/baselines/` were removed (2,000-evaluation budget) and must be rerun at
+  the test budget (150 runs × ~6 min: run on the DSlab).
 * Lens caveat (resolved by D11): from random starts with 2,000 evaluations every baseline stays 2–3 orders of
   magnitude above the group template (median best RMS² 0.14–0.87 mm² vs 4.6e-4 mm²), so lens AOCCs
   are compressed in 0.50–0.53 and the lens contributes little to fitness differences. Options:
