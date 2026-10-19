@@ -15,7 +15,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-_LIB_PATH = os.environ.get("CEC2020RWC_LIB", os.path.join(os.path.dirname(os.path.abspath(__file__)), "cec2020_cpp", "cec2020rwc.so"))
+_LIB_NAME = "cec2020rwc.dll" if os.name == "nt" else "cec2020rwc.so"
+_LIB_PATH = os.environ.get("CEC2020RWC_LIB",
+                           os.path.join(os.path.dirname(os.path.abspath(__file__)), "cec2020_cpp", _LIB_NAME))
 _lib = None
 
 
