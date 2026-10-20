@@ -39,7 +39,7 @@ Three settings, identical except for what `func` returns and one paragraph of th
 10 problems, all through one interface (`problems/suite.py`). Integer/categorical variables
 are exposed as such.
 
-| id | problem | d | int (kind) | m | role |
+| id | problem | d | int | m | role |
 |---|---|---|---|---|---|
 | `lens/original` | Double-Gauss, group specification | 24 | 6 (categorical) | 24 | train + test |
 | `lens/realistic_draft` | Double-Gauss, manufacturability specification | 24 | 6 (categorical) | 24 | test |
@@ -82,12 +82,10 @@ f*: best feasible value over all competition submissions (Table 3 of the paper i
 ## 4. What the algorithm sees
 
 * **Encoded space** (`harness/space.py`):
-  * continuous variables in **[-1, 1]**, decoded affinely to the native box;
-  * integer variables (ordinal / binary / categorical) with n values as **indices 0..n-1** with
-    bounds **[-0.5, n-0.5]**, decoded `k = clip(rint(z), 0, n-1)`. An exact integer maps to
+  * continuous variables in [-1, 1], decoded affinely to the native box;
+  * integer variables (ordinal/binary/categorical) with n values as indices 0..n-1 with
+    bounds [-0.5, n-0.5], decoded `k = clip(rint(z), 0, n-1)`. An exact integer maps to
     itself, and uniform sampling over the bounds gives every value equal probability (tested).
-    (Bounds [0, n-1] would halve the probability of the end values; mapping [-1, 1] with
-    `round` reached 2 of 6 glasses in the TFG's v5.)
 * **Attributes of `func`**: `bounds.lb/ub`, `dim`, `variable_types`, `n_values`,
   `integer_indices`, `continuous_indices`, `budget`; `n_constraints` only in `free`/`guided`.
 * **No problem identity**: no names in prompts or feedback (RC15, RC18, RC21 are textbook problems).
@@ -97,10 +95,10 @@ f*: best feasible value over all competition submissions (Table 3 of the paper i
 ## 5. Budget and time
 
 * **1 call = 1 evaluation**, objective and constraints together, same cost in every arm.
-  Repeated points are counted. No gradients in the main study (D2, see §11).
-* **Budget per run (D3, D11):** lens 10,000 evaluations during evolution and 50,000 at test time
+  Repeated points are counted. No gradients in the main study.
+* **Budget per run:** lens 10,000 evaluations during evolution and 50,000 at test time
   (the TFG's standard budget); CEC 500·d (2,000–11,000; < 2 s) in both phases. A lens evaluation
-  costs ~7 ms on one CPU core (~70 s per training run, ~6 min per test run). `harness/config.py`.
+  costs ~7 ms on one CPU core (~70 s per training run, ~6 min per test run).
 * **Vectorisation:** `jax.vmap` batch evaluation of the lens is implemented and tested equal to
   single evaluation (≤ 1e-15 relative), but on CPU it is 1.5–3× *slower* per lens (each lens already
   traces 8,658 rays in one vectorised call), so it is used only on GPU (`LLAMEA_LENS_BATCH` to force).
@@ -115,7 +113,7 @@ f*: best feasible value over all competition submissions (Table 3 of the paper i
 
 The **harness**, never the algorithm, records every evaluation and the best point.
 
-* **Normalised violations (D9):** for every problem, v_j = (raw violation of constraint j) / s_j with
+* **Normalised violations:** for every problem, v_j = (raw violation of constraint j) / s_j with
   s_j = median of the *positive* raw violations of j over 2,000 seeded uniform samples of the native
   box (1 if never violated): one unit = a typical violation of that constraint, so that no
   constraint dominates a sum because of its units. Lens raw units: fraction of rays, mm; CEC: g_j.
@@ -148,10 +146,9 @@ The **harness**, never the algorithm, records every evaluation and the best poin
 
 ## 8. Protocol
 
-* **LLaMEA:** (4 + 12) elitist ES, 100 candidates per run, standard mutation prompts, standard
-  feedback (§9). **PENDING (D8):** LLM (model, version, temperature), fixed for all arms.
+* **LLaMEA:** ? ES, 100 candidates per run, standard mutation prompts, standard
+  feedback.
 * **Training problems** (evolution): `lens/original`, RC12, RC15, RC21, RC25; seeds 0, 1, 2.
-  **PENDING (D6):** lens instance used for training (`original` vs final realistic).
 * **Test** (final algorithms): all 10 problems, 15 new seeds (1000–1014). Held-out problems
   (lens realistic, RC13, RC16, RC18, RC26) are reported separately from training problems.
 * **Replicates:** 10 independent LLaMEA runs per arm (30 runs).
@@ -159,9 +156,7 @@ The **harness**, never the algorithm, records every evaluation and the best poin
   differ only in the comparison (penalty scalar vs Deb's feasibility rules on (f, g)):
   L-SHADE (success-history DE, current-to-pbest/1 + archive, linear population reduction;
   initial population capped at budget/25 for our budgets), CMA-ES (pycma, rank-based, IPOP
-  restarts, pycma integer handling), plus random search. **PENDING:** LDG-EA on the lens (code or
-  results from K. Antonov). Multistart SLSQP only in the gradient experiment (§11): without
-  gradients each finite-difference gradient would cost d + 1 evaluations of the budget.
+  restarts, pycma integer handling), plus random search.
 
 ## 9. Feedback to the LLM
 
@@ -184,7 +179,7 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   over generations, performance conditioned on strategy, convergence of winning lineages
   (BLADE code-evolution graphs).
 
-## 11. Secondary experiments (only after the main study)
+## 11. Secondary experiments
 
 * **Gradients (lens only):** penalty arm gets ∇(penalty); free arms get ∇f and the Jacobian of g;
   cost charged at the measured time ratio. Question: does gradient information change the
@@ -234,25 +229,6 @@ deliberate: the selection criterion depends on it and a practitioner would know 
 * The lens worker caches the compiled simulator in `~/.cache/llamea_constraints_jax` (job start
   ~7 s instead of ~12 s).
 * With `max_workers=1` LLaMEA ignores `eval_timeout`; the harness' own limits still apply.
-
-## 14. Pending decisions (to fix before the main runs)
-
-| id | decision | current default |
-|---|---|---|
-| D1 | realistic lens values | draft in `problems/lens.py` |
-| D6 | lens instance for training | `lens/original` |
-| D7 | CEC penalty weight ρ | 10·max(1, \|f*\|) |
-| D8 | LLM and temperature | — |
-| D10 | LDG-EA as lens baseline | needs code/results from K. Antonov |
-
-Decided: D2 no gradients in the main study; D3 budgets as in §5; D4 score ranges as in §6;
-D5 AOCC as fitness; D9 violation normalisation as in §6; D11 lens budgets 10k/50k; integers as typed indices with
-[-0.5, n-0.5] bounds; FEAS_TOL = 1e-9; ray loss as graded constraint.
-
-## Change log
-
-* 2026-10-18 — first version (problems verified, harness implemented and tested). During testing:
-  ray loss added as a graded constraint (lens: 23 → 24 constraints) and violation normalisation
   changed from per-tolerance (lens) / median |g| (CEC) to the common rule D9.
 * 2026-10-19 — baselines implemented (L-SHADE and CMA-ES in penalty/Deb pairs, random search).
 * 2026-10-19 — D11: lens budget 2,000 → 10,000 (train) / 50,000 (test), as in the TFG; with 2,000
