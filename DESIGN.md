@@ -189,10 +189,10 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   into the infeasible region). LLaMEA 1.4 also offers AST feature-guided mutation
   (`feature_guided_mutation`), off in the main study.
 
-## 12. Validation of the harness (2026-10-18)
+## 12. Validation of the harness
 
 * 65 automated tests (`python -m pytest`), including: uniform coverage of integer values under
-  uniform sampling (fails on purpose with the v5 mapping and with [0, n-1] bounds); hard budget
+  uniform sampling; hard budget
   (also against code that catches `Exception` or everything); identical evaluation in all arms;
   best-feasible record = brute force; NaN handling; timeouts (in func, SIGALRM, hard kill);
   syntax errors, missing class, crashes (`os._exit`); runs from scripts without a `__main__` guard;
@@ -219,18 +219,3 @@ deliberate: the selection criterion depends on it and a practitioner would know 
   are compressed in 0.50–0.53 and the lens contributes little to fitness differences. Options:
   larger lens budget, or a score range matched to reachable values; to decide before the main runs.
 
-## 13. Known limitations
-
-* The candidate code runs in a separate process but is not sandboxed (file system, network).
-* Algorithms using their own unseeded RNG (`np.random.default_rng()` without a seed) are not
-  reproducible; the harness seeds `random` and `np.random` only.
-* A candidate that swallows `BaseException` (bare `except:`) in a loop is stopped by SIGALRM or by
-  the hard kill; its record may be lost and the run scores 0 (status `timeout`).
-* The lens worker caches the compiled simulator in `~/.cache/llamea_constraints_jax` (job start
-  ~7 s instead of ~12 s).
-* With `max_workers=1` LLaMEA ignores `eval_timeout`; the harness' own limits still apply.
-  changed from per-tolerance (lens) / median |g| (CEC) to the common rule D9.
-* 2026-10-19 — baselines implemented (L-SHADE and CMA-ES in penalty/Deb pairs, random search).
-* 2026-10-19 — D11: lens budget 2,000 → 10,000 (train) / 50,000 (test), as in the TFG; with 2,000
-  every baseline stayed 2–3 orders of magnitude above the template. Batch (vmap) lens evaluation
-  added for GPU.
