@@ -1,9 +1,5 @@
 # Design: constraint representation in LLM-driven algorithm discovery
 
-**Status:** design frozen for implementation, 2026-10-18 (pre-registration).
-Items marked **PENDING** must be fixed, and committed here, before any LLaMEA run whose results
-are reported. Any later change goes in the change log at the end, with its reason.
-
 Author: Santiago Garcia Mayayo (LIACS, NACO). Supervisors: Niki van Stein, Elena Raponi, and Thomas Bäck.
 
 ---
@@ -26,19 +22,17 @@ Existing work (llmEA/AwesomeDE, LMCOEA, LLM4CMO, AutoCO) builds constraint-handl
 knowledge into the prompt or fixes the component the LLM designs. To our knowledge, no work
 isolates the effect of the constraint interface with everything else held fixed.
 
-## 2. Arms
+## 2. Conditions
 
-Three arms, identical except for what `func` returns and one paragraph of the prompt
+Three settings, identical except for what `func` returns and one paragraph of the prompt
 (`harness/prompts.py`; the equality of all other text is enforced by a test).
 
-| arm | `func(x)` returns | prompt |
+| type | `func(x)` returns | prompt |
 |---|---|---|
 | `penalty` | `y`: objective + penalties (one float) | interface + evaluation criterion |
 | `free` | `(f, g)`: objective, vector of normalised violations `g_j >= 0` (0 = satisfied) | same, no method mentioned |
 | `guided` | `(f, g)` as in `free` | same + one paragraph listing standard techniques |
 
-`penalty` vs `free` isolates **information** (scalar vs vector); `free` vs `guided` isolates
-**prescribed knowledge**. `guided` is the closest analogue of prior work.
 
 ## 3. Problems
 
