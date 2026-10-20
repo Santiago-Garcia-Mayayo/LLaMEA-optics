@@ -4,27 +4,27 @@
 Items marked **PENDING** must be fixed, and committed here, before any LLaMEA run whose results
 are reported. Any later change goes in the change log at the end, with its reason.
 
-Author: Santiago Garcia Mayayo (LIACS, NACO). Supervisor: Niki van Stein.
+Author: Santiago Garcia Mayayo (LIACS, NACO). Supervisors: Niki van Stein, Elena Raponi, and Thomas Bäck.
 
 ---
 
-## 1. Question
+## 1. Research questions
 
 When LLaMEA designs optimisers for constrained problems, does it matter how the constraints
-are *exposed* to the generated algorithm?
+are exposed to the generated algorithm?
 
-* **RQ1 (performance).** Does LLaMEA discover better algorithms when the algorithm sees the
+* **RQ1:** Does LLaMEA discover better algorithms when the algorithm sees the
   objective and the constraint violations separately than when it sees one penalised scalar?
-* **RQ2 (knowledge).** Does telling the LLM about constraint-handling techniques change this?
-* **RQ3 (strategies).** Without instructions, which constraint-handling strategies does the
+* **RQ2:** Does telling the LLM about constraint-handling techniques change this?
+* **RQ3:** Without instructions, which constraint-handling strategies does the
   LLM invent (penalties, feasibility rules, repair, ε-constraints, violation-as-objective,
   constrained solvers, hybrids), how do they evolve over generations, and which win?
-* **RQ4 (generalisation).** Do the results hold on problems not used during evolution, and
+* **RQ4:** Do the results hold on problems not used during evolution, and
   outside lens design?
 
 Existing work (llmEA/AwesomeDE, LMCOEA, LLM4CMO, AutoCO) builds constraint-handling
-knowledge into the prompt or fixes the component the LLM designs. To our knowledge no work
-isolates the effect of the constraint *interface* with everything else held fixed.
+knowledge into the prompt or fixes the component the LLM designs. To our knowledge, no work
+isolates the effect of the constraint interface with everything else held fixed.
 
 ## 2. Arms
 
