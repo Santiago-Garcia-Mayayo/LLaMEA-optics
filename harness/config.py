@@ -29,7 +29,7 @@ LLAMEA_N_OFFSPRING = 5
 LLAMEA_ELITISM = True
 LLAMEA_BUDGET = 100
 LLM_MODEL = "claude-sonnet-5-5"   # PENDING confirmation (D8)
-LLM_TEMPERATURE = 0.8             # LLaMEA's default for Anthropic_LLM
+LLM_TEMPERATURE = None           # LLaMEA's default for Anthropic_LLM
 
 # Wall-clock limit per run: TIME_FACTOR x (budget x typical cost of one evaluation),
 # never below TIME_MIN seconds. Generous on purpose: it only stops runaway code.

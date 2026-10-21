@@ -1,0 +1,20 @@
+No archive path provided, standard initialisation.
+Initializing first population
+2026-10-21 14:18:37 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:18:41 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:18:41 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:18:47 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:18:55 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:19:12 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:19:16 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:19:21 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:19:23 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2026-10-21 14:19:27 INFO HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+Started evolutionary loop, best so far: 0.8486433230190219
+Generation 2, best so far: 0.8693679341232593
+done penalty cec/RC15: fitness 0.8694
+Releasing individual <llamea.solution.Solution object at 0x7eff601f5160>
+Releasing individual <llamea.solution.Solution object at 0x7f016236d490>
+Releasing individual <llamea.solution.Solution object at 0x7f61ea8274a0>
+Releasing individual <llamea.solution.Solution object at 0x7fd646e7fec0>
+Releasing individual <llamea.solution.Solution object at 0x7ff675f4ad20>

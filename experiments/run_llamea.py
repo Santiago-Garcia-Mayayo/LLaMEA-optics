@@ -33,12 +33,14 @@ def run_dir(out, tag, arm, pid):
 def single(pid, arm, out, tag, model, budget, n_parents, n_offspring, elitism, temperature,
            max_workers=None):
     """Run one LLaMEA in this process (called in a subprocess by `main`)."""
+    import anthropic
     from llamea.llm import Anthropic_LLM
     from harness.llamea_adapter import make_llamea
     d = os.path.abspath(run_dir(out, tag, arm, pid))
     os.makedirs(d, exist_ok=True)
     os.chdir(d)                                   # LLaMEA writes its log to the working directory
-    llm = Anthropic_LLM(api_key=os.environ["ANTHROPIC_API_KEY"], model=model, temperature=temperature)
+    llm = Anthropic_LLM(api_key=os.environ["ANTHROPIC_API_KEY"], model=model,
+                        temperature=anthropic.NOT_GIVEN if temperature is None else temperature)
     es = make_llamea(arm, llm, pid, budget=budget, n_parents=n_parents, n_offspring=n_offspring,
                      elitism=elitism, experiment_name=f"{arm}-{pid.replace('/', '_')}",
                      log_dir=os.path.join(d, "candidates"), max_workers=max_workers)
