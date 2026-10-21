@@ -11,7 +11,7 @@ RA = "harness.reference_algorithms:"
 
 def test_reference_algorithms_run_in_all_arms():
     for arm, algo in [("penalty", "RandomSearchPenalty"), ("free", "RandomSearchFree"),
-                      ("guided", "RandomSearchFree"), ("penalty", "DEPenalty"), ("free", "DEFeasibilityRules")]:
+                      ("informed", "RandomSearchFree"), ("penalty", "DEPenalty"), ("free", "DEFeasibilityRules")]:
         rs = run_job(RA + algo, "toy/basic", arm, [0, 1], budget=300, time_limit=30)
         assert all(r.status in ("ok", "budget_exhausted") for r in rs), (arm, algo, [r.error for r in rs])
         assert all(r.n_evals == 300 and r.found_feasible for r in rs)

@@ -85,8 +85,8 @@ def test_harness_batch_path_matches_single_path(monkeypatch):
     assert np.allclose(gb, gs, rtol=1e-9, atol=1e-12)
 
 
-def test_budgets_by_phase():
+def test_budgets_are_1000_per_dimension():
     from harness import config
     lens, rc15 = LensSuiteProblem("original"), CECProblem(15)
-    assert config.budget_for(lens, "train") == 10_000 and config.budget_for(lens, "test") == 50_000
-    assert config.budget_for(rc15, "train") == config.budget_for(rc15, "test") == 3_500
+    assert config.budget_for(lens, "train") == config.budget_for(lens, "test") == 24_000
+    assert config.budget_for(rc15, "train") == config.budget_for(rc15, "test") == 7_000

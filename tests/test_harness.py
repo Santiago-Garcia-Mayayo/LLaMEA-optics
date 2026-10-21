@@ -167,3 +167,22 @@ def test_bad_arm_and_budget():
         Harness(ToyProblem(), "both", 10)
     with pytest.raises(ValueError):
         Harness(ToyProblem(), "free", 0)
+
+
+def test_behaviour_statistics():
+    rng = np.random.default_rng(0)
+    h = Harness(ToyProblem(), "free", 200)
+    h.func(rng.uniform([-1, -1, -0.5, -0.5], [1, 1, 4.5, 2.5], size=(199, 4)))
+    h.func(OPT)
+    r = h.result()
+    assert len(r.viol_freq) == 2 and all(0 <= v <= 1 for v in r.viol_freq)
+    assert r.best_gap == pytest.approx(0.0, abs=1e-12)          # the optimum was evaluated last
+    assert r.last_improvement_eval == 200 and r.eval_90 <= r.last_improvement_eval
+    assert r.best_violated == []
+
+
+def test_informed_arm_sees_what_free_sees():
+    hf, hi = Harness(ToyProblem(), "free", 5), Harness(ToyProblem(), "informed", 5)
+    f1, g1 = hf.func(OPT)
+    f2, g2 = hi.func(OPT)
+    assert f1 == f2 and np.array_equal(g1, g2) and hi.func.n_constraints == hf.func.n_constraints

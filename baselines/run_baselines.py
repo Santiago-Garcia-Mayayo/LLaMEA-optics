@@ -72,6 +72,7 @@ def load_runs(path):
 def write_summary(runs_path, md_path):
     runs = load_runs(runs_path)
     names = [b for b in BASELINES if any(r["baseline"] == b for r in runs)]
+    names += sorted({r["baseline"] for r in runs} - set(names))      # e.g. llamea_<arm>
     probs = [p for p in config.TEST_PROBLEMS if any(r["problem"] == p for r in runs)]
     probs += sorted({r["problem"] for r in runs} - set(probs))
 
@@ -110,7 +111,7 @@ def main():
     ap.add_argument("--baselines", nargs="*", default=list(BASELINES))
     ap.add_argument("--problems", nargs="*", default=list(config.TEST_PROBLEMS))
     ap.add_argument("--seeds", nargs="*", type=int, default=list(config.TEST_SEEDS))
-    ap.add_argument("--out", default="results/baselines")
+    ap.add_argument("--out", default="results/baselines_1000d")
     ap.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     ap.add_argument("--trace", action="store_true", help="also save per-evaluation traces (.npz)")
     ap.add_argument("--phase", choices=("train", "test"), default="test",

@@ -5,8 +5,9 @@
     res = h.result()
 
 Arms (identical evaluation underneath, one simulation per point):
-    "penalty"        func(x) -> y                   (objective + penalties, one float)
-    "free", "guided" func(x) -> (f, g)              (objective, violations g_i >= 0, 0 = satisfied)
+    "penalty"          func(x) -> y                 (objective + penalties, one float)
+    "free", "informed" func(x) -> (f, g)            (objective, violations g_i >= 0, 0 = satisfied)
+("informed" differs from "free" only in the feedback the LLM receives, see evaluate.py.)
 For a batch X of shape (n, d): penalty -> y (n,), free -> (f (n,), g (n, m)).
 
 The harness, not the algorithm, is the source of truth: it seals points, counts the
@@ -25,7 +26,7 @@ from problems import FEAS_TOL
 from . import scoring
 from .space import EncodedSpace
 
-ARMS = ("penalty", "free", "guided")
+ARMS = ("penalty", "free", "informed")
 
 
 class BudgetExhausted(BaseException):
@@ -57,6 +58,12 @@ class RunResult:
     feasible_fraction: float = 0.0     # fraction of evaluations that were feasible
     wall_time: float = 0.0
     curve: list = field(default_factory=list)   # [(eval, unit score)] at improvements
+    # behaviour statistics (used in the feedback of the informed arm and in the analysis)
+    best_gap: float | None = None      # (f - f_ref) / scale of the best feasible point
+    viol_freq: list = field(default_factory=list)  # per constraint: fraction of evals violating it
+    best_violated: list = field(default_factory=list)  # constraints violated at the best point
+    last_improvement_eval: int | None = None
+    eval_90: int | None = None         # first eval reaching 90% of the run's total improvement
 
     def to_dict(self):
         return asdict(self)
@@ -110,6 +117,7 @@ class Harness:
         self._n_feasible = 0
         self._curve = []               # (eval, unit) at each improvement
         self._unit_now = 0.0
+        self._viol_count = np.zeros(problem.n_constraints, np.int64)
         # per-evaluation trace (for analysis)
         self.trace = {"f": [], "T": [], "n_violated": [], "feasible": [], "penalty": [], "x": []}
         self.func = self._make_func()
@@ -141,8 +149,21 @@ class Harness:
             feasible_fraction=(self._n_feasible / self.n_evals if self.n_evals else 0.0),
             wall_time=time.perf_counter() - self._t0,
             curve=[(int(e), float(u)) for e, u in self._curve],
+            best_gap=(float((b["f"] - self.spec.f_ref) / self.spec.scale)
+                      if b is not None and b["feasible"] else None),
+            viol_freq=((self._viol_count / self.n_evals).round(4).tolist() if self.n_evals else []),
+            best_violated=([int(j) for j in np.flatnonzero(b["v"] > FEAS_TOL)] if b is not None else []),
+            last_improvement_eval=(int(self._curve[-1][0]) if self._curve else None),
+            eval_90=self._eval_90(),
         )
         return r
+
+    def _eval_90(self):
+        if not self._curve:
+            return None
+        u0, uf = self._curve[0][1], self._curve[-1][1]
+        thr = u0 + 0.9 * (uf - u0)
+        return int(next(e for e, u in self._curve if u >= thr - 1e-12))
 
     # ------------------------------------------------------------------ internals
     def _dense_unit_curve(self) -> np.ndarray:
@@ -202,6 +223,7 @@ class Harness:
     def _record(self, x, ev):
         feasible = self.problem.is_feasible(ev)
         T = 0.0 if feasible else scoring.total_violation(ev.f, ev.v)
+        self._viol_count += np.asarray(ev.v) > FEAS_TOL
         if feasible:
             self._n_feasible += 1
             if self._first_feasible is None:
@@ -210,7 +232,8 @@ class Harness:
         if key < self._best_key:
             self._best_key = key
             s = scoring.score(ev.f, feasible, T, self.spec)
-            self._best_eval = {"f": ev.f, "T": T, "feasible": feasible, "x": np.array(x), "s": s}
+            self._best_eval = {"f": ev.f, "T": T, "feasible": feasible, "x": np.array(x), "s": s,
+                               "v": np.array(ev.v, float)}
             u = scoring.unit(s)
             if u != self._unit_now or not self._curve:
                 self._unit_now = u

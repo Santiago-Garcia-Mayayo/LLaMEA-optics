@@ -1,6 +1,7 @@
-"""Task prompts for the three arms. The texts are identical except for the paragraph that
-describes what func returns (and, in the guided arm, one extra paragraph of hints).
-Keep it that way: any other difference between arms is a confound."""
+"""Task prompts for the three arms. penalty and free differ only in the paragraph that
+describes what func returns; informed has exactly the free prompt (it differs from free only
+in the feedback after each candidate, see evaluate.py). Keep it that way: any other
+difference between arms is a confound."""
 from __future__ import annotations
 
 import textwrap
@@ -8,10 +9,10 @@ import textwrap
 ROLE = "You are a highly skilled computer scientist and Python expert in optimisation."
 
 _COMMON_HEAD = """\
-Your task is to design a novel, high-performing optimisation algorithm in Python for
-black-box, constrained, mixed-integer optimisation problems from engineering design.
-The algorithm is evaluated on several such problems (with different dimensions and numbers
-of constraints) and must work on all of them without being told which problem it is.
+Your task is to design a novel, high-performing optimisation algorithm in Python for a
+black-box, constrained, mixed-integer optimisation problem from engineering design.
+The algorithm is evaluated on this problem in several independent runs (different random
+seeds); the problem itself is a black box: only what `func` exposes is known.
 
 The code must define a class with `__init__(self, budget, dim)` and `__call__(self, func)`.
 `__call__` must optimise `func` using at most `self.budget` calls to `func`; calls beyond the
@@ -43,18 +44,10 @@ What `func` returns:
   `f` may be `inf` for points where the objective is undefined (always infeasible).
 """,
 }
-_INTERFACE["guided"] = _INTERFACE["free"]
-
-_HINTS = """\
-Hints: established constraint-handling techniques include feasibility rules (Deb's rules:
-feasible beats infeasible, then lower objective, then lower total violation), epsilon-
-constrained methods, stochastic ranking, adaptive/dynamic penalty functions, repair of
-infeasible points, and treating constraint violation as an additional objective. You may
-use, adapt or combine any of them.
-"""
+_INTERFACE["informed"] = _INTERFACE["free"]
 
 _COMMON_TAIL = """\
-Evaluation criterion: only feasible points count. For each problem the score is based on the
+Evaluation criterion: only feasible points count. In each run the score is based on the
 best objective value among the feasible points evaluated during the run (any feasible point
 is better than any infeasible one), and the anytime performance over the whole budget is
 measured, so finding good feasible points early matters.
@@ -104,14 +97,11 @@ class RandomSearch:
 ```
 ''',
 }
-_EXAMPLE["guided"] = _EXAMPLE["free"]
+_EXAMPLE["informed"] = _EXAMPLE["free"]
 
 
 def task_prompt(arm: str) -> str:
-    parts = [_COMMON_HEAD, _INTERFACE[arm]]
-    if arm == "guided":
-        parts.append(_HINTS)
-    parts.append(_COMMON_TAIL)
+    parts = [_COMMON_HEAD, _INTERFACE[arm], _COMMON_TAIL]
     return "\n".join(textwrap.dedent(p) for p in parts)
 
 
