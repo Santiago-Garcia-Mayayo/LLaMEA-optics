@@ -11,11 +11,11 @@ dependencies = ["numpy", "scipy"]
 
 [project.optional-dependencies]
 lens = ["jax", "matplotlib", "adjustText", "pandas", "openpyxl"]
-llamea = ["llamea @ git+https://github.com/XAI-liacs/LLaMEA.git@05d8a97d1423048ff066b72acbb732376351144f", "anthropic"]
+llamea = ["llamea @ git+https://github.com/XAI-liacs/LLaMEA.git@05d8a97d1423048ff066b72acbb732376351144f"]
 dev = ["pytest", "cma"]
 
 [tool.setuptools]
-packages = ["problems", "harness", "baselines"]
+packages = ["problems", "harness", "baselines", "experiments"]
 
 [tool.setuptools.package-data]
 problems = ["data/*.json", "cec2020_cpp/*"]

@@ -7,7 +7,6 @@
 Every run lives in <out>/<tag>/<arm>/<problem>/ :
     best.json        best algorithm (code, name, training fitness) -- written at the end
     candidates/      one JSON per evaluated candidate (code, fitness, per-seed results, feedback)
-    llm_usage.jsonl  tokens of every LLM call (cost: harness.claude_llm.cost_of)
     LLaMEA-*/        LLaMEA's own log (conversation, population per generation)
     run.log          stdout/stderr of the run
 Runs that already have best.json are skipped (resumable). Each run is its own subprocess.
@@ -34,12 +33,12 @@ def run_dir(out, tag, arm, pid):
 def single(pid, arm, out, tag, model, budget, n_parents, n_offspring, elitism, temperature,
            max_workers=None):
     """Run one LLaMEA in this process (called in a subprocess by `main`)."""
-    from harness.claude_llm import Claude_LLM, cost_of
+    from llamea.llm import Anthropic_LLM
     from harness.llamea_adapter import make_llamea
     d = os.path.abspath(run_dir(out, tag, arm, pid))
     os.makedirs(d, exist_ok=True)
     os.chdir(d)                                   # LLaMEA writes its log to the working directory
-    llm = Claude_LLM(model=model, temperature=temperature, usage_log=os.path.join(d, "llm_usage.jsonl"))
+    llm = Anthropic_LLM(api_key=os.environ["ANTHROPIC_API_KEY"], model=model, temperature=temperature)
     es = make_llamea(arm, llm, pid, budget=budget, n_parents=n_parents, n_offspring=n_offspring,
                      elitism=elitism, experiment_name=f"{arm}-{pid.replace('/', '_')}",
                      log_dir=os.path.join(d, "candidates"), max_workers=max_workers)
@@ -48,11 +47,11 @@ def single(pid, arm, out, tag, model, budget, n_parents, n_offspring, elitism, t
     rec = {"problem": pid, "arm": arm, "model": model, "budget": budget, "n_parents": n_parents,
            "n_offspring": n_offspring, "elitism": elitism, "temperature": temperature,
            "name": best.name, "fitness": best.fitness, "code": best.code, "description": best.description,
-           "wall_time_s": time.time() - t0, "llm_cost": cost_of(os.path.join(d, "llm_usage.jsonl"))}
+                      "wall_time_s": time.time() - t0}
     with open(os.path.join(d, "best.json"), "w") as fh:
         json.dump(rec, fh, indent=1, default=float)
-    print(f"done {arm} {pid}: fitness {best.fitness:.4f}, {rec['llm_cost']['usd']:.2f} USD", flush=True)
-
+    print(f"done {arm} {pid}: fitness {best.fitness:.4f}", flush=True)
+    
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

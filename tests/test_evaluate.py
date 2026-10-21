@@ -1,4 +1,4 @@
-"""Candidate evaluation, feedback, prompts, the LLaMEA integration (fake LLM) and Claude_LLM."""
+"""Candidate evaluation, feedback, prompts, the LLaMEA integration and run driver (fake LLM)."""
 import json
 import re
 import textwrap
@@ -122,64 +122,35 @@ def test_defaults_are_the_protocol():
             sig["elitism"].default) == (5, 5, 100, True)
 
 
-# ---------------------------------------------------------------- Claude_LLM (no network)
+# ---------------------------------------------------------------- run driver (no network)
 class _Resp:
     def __init__(self, text):
         self.content = [type("B", (), {"type": "text", "text": text})()]
         self.stop_reason = "end_turn"
-        self.usage = type("U", (), {"input_tokens": 1000, "output_tokens": 500,
-                                    "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0})()
-
-
-def test_claude_llm_messages_and_usage(tmp_path, monkeypatch):
-    from harness import claude_llm
-    sent = {}
-
-    class FakeClient:
-        class messages:  # noqa: N801
-            @staticmethod
-            def create(**kw):
-                sent.update(kw)
-                return _Resp("hello")
-
-    monkeypatch.setattr(claude_llm.Claude_LLM, "_make_client", lambda self: FakeClient())
-    log = tmp_path / "u.jsonl"
-    llm = claude_llm.Claude_LLM(api_key="sk-test", model="claude-sonnet-5-5", usage_log=str(log))
-    out = llm.query([{"role": "system", "content": "S"}, {"role": "user", "content": "a"},
-                     {"role": "user", "content": "b"}, {"role": "assistant", "content": "c"},
-                     {"role": "user", "content": "d"}])
-    assert out == "hello" and sent["system"] == "S" and "temperature" not in sent
-    assert [m["role"] for m in sent["messages"]] == ["user", "assistant", "user"]
-    assert sent["messages"][0]["content"] == "a\n\nb"
-    rec = json.loads(log.read_text())
-    assert rec["input_tokens"] == 1000 and rec["output_tokens"] == 500
-    c = claude_llm.cost_of(str(log))
-    assert c["calls"] == 1 and c["usd"] == pytest.approx((1000 * 2 + 500 * 10) / 1e6)
-    import pickle
-    llm2 = pickle.loads(pickle.dumps(llm))      # LLaMEA ships the LLM to worker processes
-    assert llm2.query([{"role": "user", "content": "x"}]) == "hello"
 
 
 def test_run_llamea_single_end_to_end(small_budgets, tmp_path, monkeypatch):
-    """experiments.run_llamea.single with a fake Claude client: writes best.json, candidates, usage."""
+    """experiments.run_llamea.single with LLaMEA's Anthropic_LLM on a fake client: writes best.json and candidates."""
+    import llamea.llm
     from experiments import run_llamea
-    from harness import claude_llm
     fake = _FakeLLM("free")
 
     class FakeClient:
+        def __init__(self, **kw):
+            pass
+
         class messages:  # noqa: N801
             @staticmethod
             def create(**kw):
                 return _Resp(fake._reply())
 
-    monkeypatch.setattr(claude_llm.Claude_LLM, "_make_client", lambda self: FakeClient())
+    monkeypatch.setattr(llamea.llm.anthropic, "Anthropic", FakeClient)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     monkeypatch.chdir(tmp_path)
     run_llamea.single("toy/basic", "free", str(tmp_path / "out"), "t", "claude-sonnet-5-5",
-                      budget=4, n_parents=2, n_offspring=2, elitism=True, temperature=None,
+                      budget=4, n_parents=2, n_offspring=2, elitism=True, temperature=0.8,
                       max_workers=1)   # in-process, so the fake client is used
     d = tmp_path / "out" / "t" / "free" / "toy_basic"
     best = json.loads((d / "best.json").read_text())
     assert best["fitness"] > 0 and "class RS" in best["code"]
-    assert best["llm_cost"]["calls"] >= 4
     assert len(list((d / "candidates").glob("*.json"))) == 4
