@@ -39,6 +39,32 @@ def test_lens_template_feasible_both_instances():
         assert p.is_feasible(p.evaluate(p.template())), inst
 
 
+def test_lens_variants_change_only_the_optical_spec():
+    """fast / wide / fast_wide: original tolerances, larger entrance pupil and/or field; the
+    starting design is still traced without losing rays, but gets worse (harder instances)."""
+    base = LensSuiteProblem("original")
+    rms = {"original": base.evaluate(base.template()).f}
+    for inst, ed, fld in (("fast", 41.5, 14.0), ("wide", 33.33, 20.0), ("fast_wide", 41.5, 20.0)):
+        p = LensSuiteProblem(inst)
+        c = p._p.cnst
+        assert abs(c.aperture.max_d - ed) < 1e-9 and abs(c.lens_field.max_field - fld) < 1e-9
+        assert p._p.obj.cnst is c                       # the objective traces the same spec
+        assert p.constraint_names == base.constraint_names and p.dim == base.dim
+        assert np.all(p.lb == base.lb) and np.all(p.ub == base.ub)
+        ev = p.evaluate(p.template())
+        assert np.isfinite(ev.f) and ev.v[0] == 0      # no ray lost at the start
+        rms[inst] = ev.f
+        # penalty arm: lensgopt's own loss, as for the original instance
+        assert abs(ev.penalty - float(p._p.evaluate(p.template())["lensgopt_terms"].sum())) < 1e-12
+    assert rms["original"] < rms["fast"] < rms["fast_wide"] and rms["original"] < rms["wide"] < rms["fast_wide"]
+
+
+def test_lens_scales_stored_for_every_instance():
+    from problems.lens import INSTANCES
+    d = json.load(open(os.path.join(DATA, "lens_violation_scales.json")))
+    assert set(INSTANCES) <= set(d)
+
+
 def test_lens_ray_loss_is_a_graded_constraint():
     """f is undefined exactly when rays are lost, and the free arm sees how many (graded),
     like the penalty arm does (10 x rays lost)."""

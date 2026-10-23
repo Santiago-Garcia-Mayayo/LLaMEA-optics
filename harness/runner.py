@@ -116,9 +116,47 @@ def _save_trace(trace_dir, res, h):
     np.savez_compressed(os.path.join(trace_dir, name), **h.trace_arrays())
 
 
-def run_job(algorithm: str, problem_id: str, arm: str, seeds, *, class_name: str | None = None,
-            budget: int | None = None, time_limit: float | None = None, init_kwargs: dict | None = None,
-            trace_dir: str | None = None, phase: str = "train") -> list[RunResult]:
+# Failures of the machine, not of the algorithm (thread/process limit reached, e.g. when other
+# programs use many threads): such runs are retried instead of scoring 0.
+RESOURCE_ERRORS = ("pthread_create", "Resource temporarily unavailable", "BlockingIOError",
+                   "Thread tf_", "Cannot allocate memory", "[Errno 11]", "[Errno 12]")
+RESOURCE_RETRIES = 4
+RESOURCE_WAIT_S = (5, 15, 30, 60)   # seconds, x (1..2) jitter; fits within the candidate timeout
+
+
+def _is_resource_failure(r: RunResult) -> bool:
+    return r.status in ("error", "crashed") and any(p in (r.error or "") for p in RESOURCE_ERRORS)
+
+
+def run_job(algorithm: str, problem_id: str, arm: str, seeds, **kw) -> list[RunResult]:
+    """Run `algorithm` on one problem for every seed, in a fresh, isolated Python process
+    (see _run_job_once). Seeds that fail because the machine ran out of threads/processes
+    are run again, up to RESOURCE_RETRIES times with growing waits; if they still fail they
+    are returned as failed, with the resource error as message."""
+    import random
+    import time
+    seeds = [int(s) for s in seeds]
+    try:
+        results = _run_job_once(algorithm, problem_id, arm, seeds, **kw)
+    except OSError as e:   # the worker process itself could not be started (fork failed)
+        results = [RunResult(problem=problem_id, arm=arm, seed=s, budget=0, status="crashed",
+                             error=f"BlockingIOError: could not start worker: {e}") for s in seeds]
+    for attempt in range(RESOURCE_RETRIES):
+        redo = [r.seed for r in results if _is_resource_failure(r)]
+        if not redo:
+            break
+        time.sleep(RESOURCE_WAIT_S[attempt] * (1 + random.random()))
+        try:
+            again = {r.seed: r for r in _run_job_once(algorithm, problem_id, arm, redo, **kw)}
+        except OSError:
+            continue
+        results = [again.get(r.seed, r) for r in results]
+    return results
+
+
+def _run_job_once(algorithm: str, problem_id: str, arm: str, seeds, *, class_name: str | None = None,
+                  budget: int | None = None, time_limit: float | None = None, init_kwargs: dict | None = None,
+                  trace_dir: str | None = None, phase: str = "train") -> list[RunResult]:
     """Run `algorithm` on one problem for every seed, in a fresh, isolated Python process.
     Unless given, the budget is config.budget_for(problem, phase) (phase "train" or "test")."""
     from problems import get_problem

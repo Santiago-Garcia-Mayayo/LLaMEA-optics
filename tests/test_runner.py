@@ -132,3 +132,44 @@ def test_few_cores_restores_affinity(monkeypatch):
     with _threads.few_cores():
         assert len(os.sched_getaffinity(0)) == 1
     assert os.sched_getaffinity(0) == before
+
+
+def test_resource_failures_are_retried_and_code_errors_are_not(monkeypatch):
+    """A run killed by the machine (thread limit) is run again; an error of the algorithm is not."""
+    from harness import runner
+    from harness.core import RunResult
+    monkeypatch.setattr(runner, "RESOURCE_WAIT_S", (0, 0, 0, 0))
+    calls = []
+
+    def fake(algorithm, pid, arm, seeds, **kw):
+        calls.append(list(seeds))
+        out = []
+        for s in seeds:
+            if s == 0 and len(calls) == 1:
+                out.append(RunResult(problem=pid, arm=arm, seed=s, budget=10, status="crashed",
+                                     error="worker died: Thread tf_XLA creation via pthread_create() failed"))
+            elif s == 1:
+                out.append(RunResult(problem=pid, arm=arm, seed=s, budget=10, status="error",
+                                     error="ZeroDivisionError: division by zero"))
+            else:
+                out.append(RunResult(problem=pid, arm=arm, seed=s, budget=10, status="ok", aocc=0.7))
+        return out
+    monkeypatch.setattr(runner, "_run_job_once", fake)
+    res = runner.run_job("x", "cec/RC15", "free", [0, 1, 2])
+    assert calls == [[0, 1, 2], [0]]                    # only the resource failure is rerun
+    assert [r.status for r in res] == ["ok", "error", "ok"] and [r.seed for r in res] == [0, 1, 2]
+
+
+def test_resource_failures_give_up_after_the_retries(monkeypatch):
+    from harness import runner
+    from harness.core import RunResult
+    monkeypatch.setattr(runner, "RESOURCE_WAIT_S", (0, 0, 0, 0))
+    n = []
+
+    def always(algorithm, pid, arm, seeds, **kw):
+        n.append(1)
+        return [RunResult(problem=pid, arm=arm, seed=s, budget=10, status="crashed",
+                          error="Resource temporarily unavailable") for s in seeds]
+    monkeypatch.setattr(runner, "_run_job_once", always)
+    res = runner.run_job("x", "cec/RC15", "free", [0])
+    assert len(n) == 1 + runner.RESOURCE_RETRIES and res[0].status == "crashed"
