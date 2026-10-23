@@ -8,7 +8,7 @@ PROBLEMS = ("lens/original", "lens/realistic_draft",
             "cec/RC18", "cec/RC21", "cec/RC25", "cec/RC26")
 TEST_PROBLEMS = PROBLEMS                      # baselines and final evaluation
 
-TRAIN_SEEDS = (0, 1, 2)                       # during evolution (3 runs per candidate)
+TRAIN_SEEDS = (0, 1, 2,3,4)                       # during evolution (3 runs per candidate)
 TEST_SEEDS = tuple(range(1000, 1015))         # final evaluation (15 seeds, never seen)
 
 # Evaluation budget per run (DECISION D3/D11, revised 2026-10-20): 1000 x d for every problem,

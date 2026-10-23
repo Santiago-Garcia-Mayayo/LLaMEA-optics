@@ -6,8 +6,8 @@
 
 Arms (identical evaluation underneath, one simulation per point):
     "penalty"          func(x) -> y                 (objective + penalties, one float)
-    "free", "informed" func(x) -> (f, g)            (objective, violations g_i >= 0, 0 = satisfied)
-("informed" differs from "free" only in the feedback the LLM receives, see evaluate.py.)
+    "free", "informed", "informed_v2" func(x) -> (f, g)            (objective, violations g_i >= 0, 0 = satisfied)
+("informed" and "informed_v2" differ from "free" only in the feedback the LLM receives, see evaluate.py.)
 For a batch X of shape (n, d): penalty -> y (n,), free -> (f (n,), g (n, m)).
 
 The harness, not the algorithm, is the source of truth: it seals points, counts the
@@ -26,7 +26,7 @@ from problems import FEAS_TOL
 from . import scoring
 from .space import EncodedSpace
 
-ARMS = ("penalty", "free", "informed")
+ARMS = ("penalty", "free", "informed", "informed_v2")
 
 
 class BudgetExhausted(BaseException):

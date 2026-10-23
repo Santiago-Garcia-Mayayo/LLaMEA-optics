@@ -44,7 +44,7 @@ What `func` returns:
   `f` may be `inf` for points where the objective is undefined (always infeasible).
 """,
 }
-_INTERFACE["informed"] = _INTERFACE["free"]
+_INTERFACE["informed"] = _INTERFACE["informed_v2"] = _INTERFACE["free"]
 
 _COMMON_TAIL = """\
 Evaluation criterion: only feasible points count. In each run the score is based on the
@@ -97,7 +97,7 @@ class RandomSearch:
 ```
 ''',
 }
-_EXAMPLE["informed"] = _EXAMPLE["free"]
+_EXAMPLE["informed"] = _EXAMPLE["informed_v2"] = _EXAMPLE["free"]
 
 
 def task_prompt(arm: str) -> str:

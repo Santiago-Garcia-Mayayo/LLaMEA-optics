@@ -4,8 +4,10 @@ fitness = mean over problems of (mean over seeds of AOCC), in [0, 1], higher is 
 Runs that end in error / crash / hard kill count as AOCC 0 (LLaMEA convention: broken code
 gets the worst fitness and the error message as feedback).
 
-Feedback to the LLM: the same basic template in every arm; the informed arm gets the same
-text plus a block of behaviour statistics per problem (DESIGN.md §9). Problems are anonymised
+Feedback to the LLM: the same basic template in every arm. On top of it, per problem:
+  informed     a block of behaviour statistics (DESIGN.md §9), plus LLaMEA-SAGE (llamea_adapter);
+  informed_v2  1-3 diagnoses derived from those statistics by fixed rules (diagnosis_lines),
+               and the same statistics compared with the candidate's parent. Problems are anonymised
 (P1, P2, ...) and described only by dimension, number of integer variables and constraints;
 constraints by their index.
 """
@@ -40,8 +42,10 @@ def _bad(r):
 def evaluate_candidate(algorithm: str, arm: str, problem_ids=config.PROBLEMS,
                        seeds=config.TRAIN_SEEDS, *, class_name: str | None = None,
                        n_workers: int | None = None, trace_dir: str | None = None,
-                       algorithm_name: str | None = None, phase: str = "train") -> CandidateResult:
-    """One isolated job per (problem, seed), run in parallel."""
+                       algorithm_name: str | None = None, phase: str = "train",
+                       parent_per_problem: dict | None = None) -> CandidateResult:
+    """One isolated job per (problem, seed), run in parallel. parent_per_problem: the parent's
+    per-problem summaries (informed_v2 only, compared in the feedback)."""
     problem_ids, seeds = list(problem_ids), [int(s) for s in seeds]
     jobs = [(pid, s) for pid in problem_ids for s in seeds]
     n_workers = n_workers or min(len(jobs), os.cpu_count() or 1)
@@ -57,7 +61,8 @@ def evaluate_candidate(algorithm: str, arm: str, problem_ids=config.PROBLEMS,
     fitness = float(np.mean([v["aocc_mean"] for v in per.values()]))
     descr = {pid: _describe(pid) for pid in problem_ids}
     fb = feedback_text(algorithm_name or class_name or "The algorithm", fitness, per, descr, errors,
-                       informed=(arm == "informed"))
+                       informed=(arm == "informed"), diagnosed=(arm == "informed_v2"),
+                       parent=parent_per_problem)
     return CandidateResult(fitness, per, [r.to_dict() for rs in results.values() for r in rs],
                            errors[0] if errors else "", fb)
 
@@ -89,10 +94,18 @@ def summarise(rs) -> dict:
         m = np.mean(np.asarray(vf, float), axis=0)
         top = [int(j) for j in np.argsort(-m)[:TOP_CONSTRAINTS] if m[j] > 0]
         s["most_violated"] = [(j, float(m[j])) for j in top]
+        s["viol_freq_mean"] = [float(v) for v in m]
     else:
         s["most_violated"] = []
+        s["viol_freq_mean"] = []
     bv = sorted({j for r in ok if not r.found_feasible for j in r.best_violated})
     s["violated_at_best_infeasible"] = bv
+    # reliability over seeds (used by the diagnoses of informed_v2)
+    s["aocc_min"], s["aocc_median"] = float(np.min(a)), float(np.median(a))
+    s["n_never_feasible"] = int(sum(not r.found_feasible for r in rs))
+    worst = rs[int(np.argmin(a))]
+    s["worst_run_first_feasible_pct"] = (100 * worst.first_feasible_eval / worst.budget
+                                         if not _bad(worst) and worst.first_feasible_eval is not None else None)
     return s
 
 
@@ -127,7 +140,54 @@ def informed_lines(s) -> list:
     return out
 
 
-def feedback_text(name, fitness, per, descr, errors, informed: bool = False) -> str:
+# Thresholds of the diagnoses (informed_v2). Fixed before any informed_v2 run.
+DIAG = {"slow_feasibility_pct": 10.0, "infeasible_waste": 0.30, "dominant_constraint": 0.30,
+        "premature_pct": 20.0, "unreliable_gap": 0.10}
+
+
+def diagnosis_lines(s, parent=None) -> list:
+    """Behaviour statistics turned into short, actionable diagnoses, plus a comparison with the
+    parent. Every rule is a fixed threshold on the statistics of summarise()."""
+    out, n = [], s["n_runs"]
+    if s.get("n_never_feasible"):
+        out.append(f"It never finds a feasible point in {s['n_never_feasible']} of {n} runs: reaching the "
+                   f"feasible region is the first thing to fix (only feasible points are scored).")
+    ff = s.get("first_feasible_pct_median")
+    if ff is not None and ff > DIAG["slow_feasibility_pct"]:
+        out.append(f"It is slow to reach feasibility: the first feasible point comes at {ff:.0f}% of the "
+                   f"budget (median over runs), and the score counts nothing before it.")
+    if s["feasible_runs"] and s["feasible_fraction"] < DIAG["infeasible_waste"]:
+        out.append(f"It spends {100 * (1 - s['feasible_fraction']):.0f}% of its evaluations on infeasible points.")
+    if s.get("most_violated"):
+        j, f = s["most_violated"][0]
+        if f >= DIAG["dominant_constraint"]:
+            out.append(f"Constraint {j} is violated in {100 * f:.0f}% of the evaluations, more than any other: "
+                       f"handling it explicitly may help.")
+    li = s.get("last_improvement_pct_median")
+    if li is not None and li < DIAG["premature_pct"]:
+        out.append(f"It stops improving after {li:.0f}% of the budget (median over runs): it converges "
+                   f"prematurely and the rest of the budget is not used.")
+    if s.get("aocc_median", 0) - s.get("aocc_min", 0) > DIAG["unreliable_gap"]:
+        w = s.get("worst_run_first_feasible_pct")
+        extra = (f"; in that run the first feasible point came at {w:.0f}% of the budget" if w is not None
+                 else "; that run found no feasible point" if s.get("n_never_feasible") else "")
+        out.append(f"It is unreliable across runs: the worst run scores {s['aocc_min']:.3f} against a median "
+                   f"of {s['aocc_median']:.3f}{extra}.")
+    if not out:
+        out.append("No constraint-related weakness detected: feasible points are found early and the search "
+                   "keeps improving; further gains must come from the optimisation itself.")
+    lines = [f"      - {t}" for t in out]
+    if parent:
+        pf = parent.get("first_feasible_pct_median")
+        lines.append(
+            f"      Compared with its parent: AOCC {s['aocc_mean']:.4f} (parent {parent['aocc_mean']:.4f}); "
+            f"feasible evaluations {100 * s['feasible_fraction']:.0f}% (parent {100 * parent.get('feasible_fraction', 0):.0f}%); "
+            f"first feasible point at {_pct(ff)} (parent {_pct(pf)}).")
+    return lines
+
+
+def feedback_text(name, fitness, per, descr, errors, informed: bool = False, diagnosed: bool = False,
+                  parent: dict | None = None) -> str:
     lines = [f"{name} obtained a mean anytime score (AOCC) of {fitness:.4f} "
              f"(range 0 to 1, higher is better; any feasible solution scores above 0.5 at that moment)."]
     lines.append("Per problem (problems are anonymised):")
@@ -140,6 +200,9 @@ def feedback_text(name, fitness, per, descr, errors, informed: bool = False) -> 
         if informed:
             lines.append("    Behaviour of the algorithm on this problem:")
             lines += informed_lines(s)
+        if diagnosed:
+            lines.append("    Diagnosis of the algorithm's behaviour on this problem:")
+            lines += diagnosis_lines(s, (parent or {}).get(pid))
     if errors:
         first = errors[0].strip().splitlines()
         lines.append("Some runs failed. First error: " + " | ".join(first[:1] + first[-3:]))
