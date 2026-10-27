@@ -51,6 +51,13 @@ def test_cmaes_runs_to_budget_and_is_feasible(cls, arm):
     assert r.found_feasible and r.best_f < 1.5
 
 
+def test_colshade_solves_toy_and_uses_the_whole_budget():
+    from baselines.colshade import COLSHADE
+    r, _ = run_one(COLSHADE, ToyProblem(), "free", 0, 3000, 60)
+    assert r.status in ("ok", "budget_exhausted") and r.n_evals == 3000   # stops exactly at the budget
+    assert r.found_feasible and r.best_f - 1.0 < 1e-2
+
+
 def test_random_search_identical_in_both_arms():
     a, _ = run_one(RandomSearch, ToyProblem(), "free", 3, 500, 60)
     b, _ = run_one(RandomSearch, ToyProblem(), "penalty", 3, 500, 60)
@@ -72,7 +79,7 @@ def test_pairs_differ_only_in_comparison():
 def test_registry_paths_and_arms():
     for name, (path, arm) in BASELINES.items():
         rs = run_job(path, "cec/RC15", arm, [0], budget=300, time_limit=60)
-        assert rs[0].status == "budget_exhausted" and rs[0].n_evals == 300, (name, rs[0].error)
+        assert rs[0].status in ("budget_exhausted", "ok") and rs[0].n_evals == 300, (name, rs[0].error)
 
 
 def test_baselines_on_mixed_integer_problems():

@@ -134,11 +134,13 @@ class CECProblem(_Base):
     Penalty arm: f + rho * sum_i v_i with rho = 10 * max(1, |f*|)  (DESIGN.md, decision P1).
     """
 
-    def __init__(self, num: int):
+    def __init__(self, num: int, rho_scale: float = 1.0):
         self._p = CEC2020Problem(num)
         assert self._p.nh == 0, "control set restricted to inequality-only problems"
         self.num = num
-        self.pid = f"cec/RC{num:02d}"
+        self.rho_scale = float(rho_scale)
+        # 'cec/RC12@rho10' = the same problem with 10x the penalty weight (sensitivity study only)
+        self.pid = f"cec/RC{num:02d}" + ("" if self.rho_scale == 1.0 else f"@rho{self.rho_scale:g}")
         self.title = self._p.name
         kinds = {i: INTEGER_KINDS.get(num, "ordinal") for i in self._p.integer_indices}
         self.variables = []
@@ -152,7 +154,7 @@ class CECProblem(_Base):
         cons = json.load(open(os.path.join(DATA, "cec_fstar_consensus.json")))
         self.f_star = float(cons[str(num)]["consensus_best"])
         self.scale = self._scales()
-        self.rho = 10.0 * max(1.0, abs(self.f_star))
+        self.rho = self.rho_scale * 10.0 * max(1.0, abs(self.f_star))
         self.score_spec = ScoreSpec(self.f_star, abs(self.f_star), 1e-6, 1.0,
                                     "relative gap to best-known value of the CEC 2020 competition")
 
@@ -223,12 +225,15 @@ class LensSuiteProblem(_Base):
 
 @lru_cache(maxsize=None)
 def get_problem(pid: str):
-    """'lens/original', 'lens/realistic_draft', 'cec/RC12', ... (cached per process)."""
+    """'lens/original', 'lens/realistic_draft', 'cec/RC12', ... (cached per process).
+    'cec/RC12@rho10': RC12 with the penalty weight multiplied by 10 (only the penalty view
+    changes; objective, constraints and scoring are those of RC12)."""
     family, name = pid.split("/", 1)
     if family == "lens":
         return LensSuiteProblem(name)
     if family == "cec":
-        return CECProblem(int(name.replace("RC", "")))
+        base, _, scale = name.partition("@rho")
+        return CECProblem(int(base.replace("RC", "")), float(scale) if scale else 1.0)
     if family == "toy":  # synthetic problem for tests only
         from .toy import ToyProblem
         return ToyProblem()

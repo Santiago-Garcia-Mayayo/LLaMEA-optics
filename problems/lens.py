@@ -1,12 +1,16 @@
 """Double-Gauss lens problem instances (24 mixed variables) on lensgopt (K. Antonov).
 
-Two instances share the simulator and differ only in the specification:
+All instances share the simulator, the starting design and the 24 variables, and differ only in
+the specification:
 
-  original  - the group's current setting (LDG-EA / Yotam Lev thesis):
-              one min thickness 0.1 mm for every gap, edge >= 0.25 mm for every gap,
-              EFFL as a squared equality, FWD >= 3 mm. Thickness min enforced by box bounds.
-  realistic - DRAFT manufacturability spec, separate glass/air limits, EFFL with tolerance.
-              Values to be confirmed with Kirill Antonov / Teus Tukker before use.
+  original    - the group's current setting (LDG-EA / Yotam Lev thesis): F/3 (entrance pupil
+                33.33 mm at EFL 99.5 mm), field +-14 deg, one min thickness 0.1 mm for every gap,
+                edge >= 0.25 mm for every gap, FWD >= 3 mm. Thickness min enforced by box bounds.
+  realistic   - DRAFT manufacturability spec, separate glass/air limits, EFFL with tolerance.
+                Values to be confirmed with Kirill Antonov / Teus Tukker before use.
+  fast        - original tolerances, faster lens: F/2.4 (entrance pupil 41.5 mm).
+  wide        - original tolerances, wider field: +-20 deg.
+  fast_wide   - both (F/2.4, +-20 deg).
 
 Every evaluation returns the raw physical quantities, from which both arms are built:
   penalty(x)      -> the group's summed loss (identical to lensgopt for the original instance)
@@ -76,12 +80,15 @@ class LensSpec:
     effl_target: float = 99.5    # [mm]
     effl_tol: float | None = None  # None -> squared equality (original); else |dEFFL| <= tol
     thickness_lb: float = 0.1    # box lower bound for optimised thicknesses [mm]
+    entrance_diameter: float | None = None   # [mm]; None -> lens file (33.33 mm, F/3)
+    max_field_deg: float | None = None       # [deg]; None -> lens file (14 deg)
+    lensgopt_penalty: bool = False           # penalty arm: lensgopt's own summed loss
     source: dict = field(default_factory=dict)
 
 
 ORIGINAL = LensSpec(
     name="original", glass_min_ct=0.1, air_min_ct=0.1, glass_min_edge=0.25, air_min_edge=0.25,
-    fwd_min=3.0, effl_tol=0.5, thickness_lb=0.1,
+    fwd_min=3.0, effl_tol=0.5, thickness_lb=0.1, lensgopt_penalty=True,
     source={"all": "lensgopt create_double_gauss(); same numbers as CODE V example in "
                    "Juergens OPTI 517 (EFL 6.43 mm lens)",
             "effl_tol": "lensgopt penalises (EFFL-99.5)^2 with no tolerance; the penalty arm keeps "
@@ -101,7 +108,19 @@ REALISTIC_DRAFT = LensSpec(
     },
 )
 
-INSTANCES = {s.name: s for s in (ORIGINAL, REALISTIC_DRAFT)}
+def _variant(name, **kw):
+    """Original tolerances with a different optical specification."""
+    from dataclasses import replace
+    return replace(ORIGINAL, name=name, source={**ORIGINAL.source, "variant": kw}, **kw)
+
+
+# F/2.4 at EFL 99.5 mm -> entrance pupil 41.5 mm; +-20 deg field. Classic Double-Gauss camera
+# lenses reach about F/2 and +-23 deg, so both stay within what the design form can do.
+FAST = _variant("fast", entrance_diameter=41.5)
+WIDE = _variant("wide", max_field_deg=20.0)
+FAST_WIDE = _variant("fast_wide", entrance_diameter=41.5, max_field_deg=20.0)
+
+INSTANCES = {s.name: s for s in (ORIGINAL, REALISTIC_DRAFT, FAST, WIDE, FAST_WIDE)}
 
 
 class LensProblem:
@@ -109,7 +128,13 @@ class LensProblem:
         self.spec = INSTANCES[spec] if isinstance(spec, str) else spec
         self.name = f"double_gauss/{self.spec.name}"
         self.obj = DoubleGaussObjective(enable_grad=False, enable_hessian=False)
-        self.cnst = self.obj.cnst
+        c = self.obj.cnst
+        if self.spec.entrance_diameter is not None:
+            c = c._replace(aperture=c.aperture._replace(max_d=float(self.spec.entrance_diameter)))
+        if self.spec.max_field_deg is not None:
+            c = c._replace(lens_field=c.lens_field._replace(max_field=float(self.spec.max_field_deg)))
+        self.obj.cnst = c   # the objective's loss reads obj.cnst when it is traced
+        self.cnst = c
         f = self.obj.factory
         self.nx = self.obj.n_x
         self.dim = self.obj.n_theta
@@ -261,7 +286,7 @@ class LensProblem:
 
     def penalty_from(self, e: dict) -> float:
         """Summed-penalty loss from one evaluation. For `original` this is exactly lensgopt's loss."""
-        if self.spec is ORIGINAL:
+        if self.spec.lensgopt_penalty:
             return float(e["lensgopt_terms"].sum())
         s = self.spec
         sq = lambda a: float(np.sum(np.square(np.minimum(0.0, a))))  # noqa: E731

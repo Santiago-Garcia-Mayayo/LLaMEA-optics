@@ -4,6 +4,7 @@ import os
 
 
 import numpy as np
+import pytest
 
 from problems.suite import CONTROL_SET, DATA, CECProblem, LensSuiteProblem  # noqa: E402
 
@@ -116,3 +117,13 @@ def test_budgets_are_1000_per_dimension():
     lens, rc15 = LensSuiteProblem("original"), CECProblem(15)
     assert config.budget_for(lens, "train") == config.budget_for(lens, "test") == 24_000
     assert config.budget_for(rc15, "train") == config.budget_for(rc15, "test") == 7_000
+
+
+def test_penalty_weight_variant_changes_only_the_penalty():
+    from problems import get_problem
+    a, b = get_problem("cec/RC12"), get_problem("cec/RC12@rho10")
+    assert b.pid == "cec/RC12@rho10" and abs(b.rho - 10 * a.rho) < 1e-9
+    x = a.lb + 0.37 * (a.ub - a.lb)
+    ea, eb = a.evaluate(x), b.evaluate(x)
+    assert ea.f == eb.f and np.array_equal(ea.v, eb.v) and a.score_spec == b.score_spec
+    assert eb.penalty - eb.f == pytest.approx(10 * (ea.penalty - ea.f))
