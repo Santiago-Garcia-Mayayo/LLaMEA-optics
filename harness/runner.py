@@ -48,6 +48,7 @@ def _load_class(algorithm: str, class_name: str | None):
     if class_name is None and ":" in algorithm and "\n" not in algorithm:
         mod, cls = algorithm.split(":")
         return getattr(importlib.import_module(mod), cls)
+    _install_seeded_default_rng()   # also covers `from numpy.random import default_rng`
     ns = {"__name__": "candidate"}
     exec(compile(algorithm, "<candidate>", "exec"), ns)
     if class_name is None:
@@ -57,10 +58,41 @@ def _load_class(algorithm: str, class_name: str | None):
     return ns[class_name]
 
 
+# Generated code often creates its own generator with np.random.default_rng() and no seed,
+# which draws from OS entropy: the same algorithm on the same seed gave different results.
+# The worker replaces np.random.default_rng by a version that, when called without a seed,
+# seeds the new generator from a SeedSequence of the run's seed (one child per call, in call
+# order). Explicit seeds are passed through unchanged, and the global np.random / random
+# streams are not touched, so code that never calls default_rng() without a seed behaves
+# exactly as before.
+_RNG = {"ss": None}
+_ORIG_DEFAULT_RNG = None
+
+
+def _install_seeded_default_rng():
+    global _ORIG_DEFAULT_RNG
+    import numpy as np
+    if _ORIG_DEFAULT_RNG is not None:
+        return
+    orig = _ORIG_DEFAULT_RNG = np.random.default_rng
+    if _RNG["ss"] is None:   # calls before the first seed (e.g. at class definition)
+        _RNG["ss"] = np.random.SeedSequence(0)
+
+    def default_rng(seed=None):
+        if seed is None:
+            seed = _RNG["ss"].spawn(1)[0]
+        return orig(seed)
+
+    default_rng.__doc__ = orig.__doc__
+    np.random.default_rng = default_rng
+
+
 def _seed_everything(seed: int):
     import numpy as np
     random.seed(seed)
     np.random.seed(seed % (2**32))
+    _install_seeded_default_rng()
+    _RNG["ss"] = np.random.SeedSequence(seed % (2**32))
 
 
 def run_one(cls, problem, arm: str, seed: int, budget: int, time_limit: float | None,

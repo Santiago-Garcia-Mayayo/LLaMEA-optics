@@ -25,6 +25,43 @@ def test_seeding_is_reproducible():
     assert (a.best_f, a.aocc) != (c.best_f, c.aocc)
 
 
+UNSEEDED = textwrap.dedent('''
+    import numpy as np
+    from numpy.random import default_rng
+    class U:
+        def __init__(self, budget, dim):
+            self.budget, self.dim = budget, dim
+            self.rng = np.random.default_rng()          # no seed, as in many generated algorithms
+            self.rng2 = default_rng(seed=None)
+        def __call__(self, func):
+            lb, ub = func.bounds.lb, func.bounds.ub
+            for _ in range(self.budget // 2):
+                func(self.rng.uniform(lb, ub)); func(self.rng2.uniform(lb, ub))
+''')
+
+
+def test_unseeded_default_rng_is_reproducible():
+    run = lambda s: run_job(UNSEEDED, "toy/basic", "free", [s], class_name="U", budget=100, time_limit=30)[0]
+    a, b, c = run(3), run(3), run(4)
+    assert a.status in ("ok", "budget_exhausted"), a.error
+    assert (a.best_f, a.aocc, a.curve) == (b.best_f, b.aocc, b.curve)
+    assert (a.best_f, a.aocc) != (c.best_f, c.aocc)
+    # same seed in a multi-seed job (one worker process) gives the same result as on its own
+    d = run_job(UNSEEDED, "toy/basic", "free", [4, 3], class_name="U", budget=100, time_limit=30)
+    assert (d[1].best_f, d[1].aocc) == (a.best_f, a.aocc)
+
+
+def test_explicit_seeds_and_global_stream_unchanged():
+    import numpy as np
+    from harness import runner
+    runner._seed_everything(7)
+    x = np.random.default_rng(123).random(3)
+    assert np.array_equal(x, np.random.Generator(np.random.PCG64(123)).random(3))
+    g = np.random.random(3)          # global stream: identical to plain np.random.seed(7)
+    np.random.seed(7)
+    assert np.array_equal(g, np.random.random(3))
+
+
 def test_source_code_candidate():
     code = textwrap.dedent('''
         import numpy as np
